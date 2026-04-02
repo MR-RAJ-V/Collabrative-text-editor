@@ -1,0 +1,55 @@
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.16), transparent 24%),
+    linear-gradient(135deg, #f8fafc, #e2e8f0);
+}
+
+.login-card {
+  width: min(460px, 100%);
+  border-radius: 28px;
+  padding: 36px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.12);
+}
+
+.login-eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: #0369a1;
+  font-weight: 700;
+}
+
+.login-card h1 {
+  margin: 0 0 12px;
+  color: #0f172a;
+}
+
+.login-copy {
+  margin: 0 0 22px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.login-button {
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 18px;
+  background: #0f172a;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-error {
+  margin: 14px 0 0;
+  color: #b91c1c;
+}

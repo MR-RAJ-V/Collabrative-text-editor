@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  color-scheme: light;
+  --bg-color: #f3f7fb;
+  --panel-bg: rgba(255, 255, 255, 0.92);
+  --panel-muted: #f7fafc;
+  --text-color: #0f172a;
+  --muted-text: #64748b;
+  --border-color: #d9e2ec;
+  --accent-color: #2563eb;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-color: #07111f;
+  --panel-bg: rgba(10, 20, 38, 0.92);
+  --panel-muted: #102038;
+  --text-color: #e2e8f0;
+  --muted-text: #94a3b8;
+  --border-color: #22324d;
+  --accent-color: #38bdf8;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: var(--bg-color);
+  color: var(--text-color);
+}
+
+* {
+  box-sizing: inherit;
+}
