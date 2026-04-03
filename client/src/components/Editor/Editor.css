@@ -158,28 +158,87 @@
 .editor-content-wrapper {
   --editor-scale: 1;
   width: 100%;
-  padding: 24px 0 48px;
+  padding: 0 0 48px;
   cursor: text;
   overflow: auto;
 }
 
-.ProseMirror {
-  zoom: var(--editor-scale);
-  outline: none;
-  min-height: calc(100vh - 220px);
-  max-width: 920px;
+.document-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  min-width: max-content;
+  background: #0b1a2b;
+  padding: 40px 0;
+}
+
+.document-shell {
+  position: relative;
+  width: 794px;
+  min-height: var(--page-track-height, 1123px);
   margin: 0 auto;
-  padding: 56px 72px;
-  border-radius: 22px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  zoom: var(--editor-scale);
+  transform-origin: top center;
+}
+
+.page-stack {
+  position: relative;
+  width: 794px;
+  z-index: 0;
+}
+
+.page {
+  width: 794px;
+  height: 1123px;
+  margin: 0 auto 32px;
   background: #ffffff;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  box-sizing: border-box;
+  border-radius: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+}
+
+.page:last-child {
+  margin-bottom: 0;
+}
+
+.editor-root-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 794px;
+  min-height: var(--page-track-height, 1123px);
+  padding: 80px 60px;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.editor-root-wrapper .ProseMirror {
+  outline: none;
+  min-height: 963px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
   font-size: 17px;
   line-height: 1.85;
   color: var(--text-color);
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
-.ProseMirror img {
+.editor-root-wrapper .ProseMirror > :first-child {
+  margin-top: 0 !important;
+}
+
+.editor-root-wrapper .ProseMirror > :last-child {
+  margin-bottom: 0 !important;
+}
+
+.editor-root-wrapper .ProseMirror img {
   display: block;
   max-width: 100%;
   margin: 18px auto;
@@ -187,26 +246,26 @@
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
 }
 
-.ProseMirror p {
+.editor-root-wrapper .ProseMirror p {
   margin: 0.75em 0;
 }
 
-.ProseMirror h1,
-.ProseMirror h2,
-.ProseMirror h3,
-.ProseMirror blockquote,
-.ProseMirror code,
-.ProseMirror pre {
+.editor-root-wrapper .ProseMirror h1,
+.editor-root-wrapper .ProseMirror h2,
+.editor-root-wrapper .ProseMirror h3,
+.editor-root-wrapper .ProseMirror blockquote,
+.editor-root-wrapper .ProseMirror code,
+.editor-root-wrapper .ProseMirror pre {
   color: var(--text-color);
 }
 
-.ProseMirror blockquote {
+.editor-root-wrapper .ProseMirror blockquote {
   border-left: 3px solid var(--accent-color);
   padding-left: 16px;
   opacity: 0.9;
 }
 
-.ProseMirror pre {
+.editor-root-wrapper .ProseMirror pre {
   background: rgba(15, 23, 42, 0.9);
   color: #e2e8f0;
   border-radius: 12px;
@@ -249,8 +308,7 @@
   border-radius: 4px;
 }
 
-:root[data-theme='dark'] .ProseMirror {
-  background: #f8fafc;
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror {
   color: #0f172a;
 }
 
@@ -262,13 +320,13 @@
   background: rgba(15, 23, 42, 0.95);
 }
 
-:root[data-theme='dark'] .ProseMirror h1,
-:root[data-theme='dark'] .ProseMirror h2,
-:root[data-theme='dark'] .ProseMirror h3,
-:root[data-theme='dark'] .ProseMirror blockquote,
-:root[data-theme='dark'] .ProseMirror code,
-:root[data-theme='dark'] .ProseMirror pre,
-:root[data-theme='dark'] .ProseMirror p {
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror h1,
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror h2,
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror h3,
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror blockquote,
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror code,
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror pre,
+:root[data-theme='dark'] .editor-root-wrapper .ProseMirror p {
   color: #0f172a;
 }
 
@@ -294,8 +352,11 @@
     display: none;
   }
 
-  .ProseMirror {
-    padding: 32px 24px;
-    min-height: calc(100vh - 180px);
+  .document-container {
+    padding: 24px 16px 32px;
+  }
+
+  .document-shell {
+    margin: 0;
   }
 }

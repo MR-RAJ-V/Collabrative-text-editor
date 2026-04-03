@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Extension } from '@tiptap/core';
 import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -97,6 +97,11 @@ const extractOutline = (editor) => {
   return headings;
 };
 
+const PAGE_HEIGHT = 1123;
+const PAGE_GAP = 32;
+const PAGE_PADDING_Y = 80;
+const PAGINATION_DEBOUNCE_MS = 180;
+
 const EditorComponent = ({
   currentUser,
   initialState,
@@ -110,6 +115,13 @@ const EditorComponent = ({
   onEditorReady,
   onOpenSearch,
 }) => {
+  const [pageCount, setPageCount] = useState(1);
+  const paginationFrameRef = useRef(0);
+  const paginationTimeoutRef = useRef(0);
+  const resizeObserverRef = useRef(null);
+  const imageCleanupRef = useRef(() => {});
+  const lastPageCountRef = useRef(1);
+
   const yDocState = useMemo(() => {
     const ydoc = new Y.Doc();
     const awareness = new Awareness(ydoc);
@@ -292,7 +304,7 @@ const EditorComponent = ({
     if (editor) {
       onEditorReady(editor);
     }
-    
+
     return () => {
       if (editor) {
         onEditorReady(null);
@@ -301,10 +313,109 @@ const EditorComponent = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
+  const recalculatePageCount = useCallback(() => {
+    if (!editor?.view?.dom) {
+      return;
+    }
+
+    const liveRoot = editor.view.dom;
+    const totalHeight = Math.max(
+      liveRoot.scrollHeight + (PAGE_PADDING_Y * 2),
+      liveRoot.offsetHeight + (PAGE_PADDING_Y * 2),
+      PAGE_HEIGHT
+    );
+    const nextPageCount = Math.max(1, Math.ceil(totalHeight / PAGE_HEIGHT));
+
+    if (lastPageCountRef.current !== nextPageCount) {
+      lastPageCountRef.current = nextPageCount;
+      setPageCount(nextPageCount);
+    }
+  }, [editor]);
+
+  const schedulePagination = useCallback(() => {
+    window.clearTimeout(paginationTimeoutRef.current);
+    paginationTimeoutRef.current = window.setTimeout(() => {
+      if (paginationFrameRef.current) {
+        window.cancelAnimationFrame(paginationFrameRef.current);
+      }
+
+      paginationFrameRef.current = window.requestAnimationFrame(() => {
+        recalculatePageCount();
+      });
+    }, PAGINATION_DEBOUNCE_MS);
+  }, [recalculatePageCount]);
+
+  useEffect(() => {
+    if (!editor?.view?.dom) {
+      return undefined;
+    }
+
+    const liveRoot = editor.view.dom;
+    const handleResize = () => schedulePagination();
+    const bindImageListeners = () => {
+      imageCleanupRef.current();
+
+      const cleanupCallbacks = Array.from(liveRoot.querySelectorAll('img')).map((image) => {
+        const onImageLoad = () => schedulePagination();
+        image.addEventListener('load', onImageLoad);
+        return () => image.removeEventListener('load', onImageLoad);
+      });
+
+      imageCleanupRef.current = () => {
+        cleanupCallbacks.forEach((cleanup) => cleanup());
+      };
+    };
+    const handleEditorUpdate = () => {
+      bindImageListeners();
+      schedulePagination();
+    };
+
+    schedulePagination();
+    bindImageListeners();
+
+    editor.on('update', handleEditorUpdate);
+    window.addEventListener('resize', handleResize);
+
+    resizeObserverRef.current = new ResizeObserver(() => {
+      schedulePagination();
+    });
+    resizeObserverRef.current.observe(liveRoot);
+
+    return () => {
+      imageCleanupRef.current();
+      window.clearTimeout(paginationTimeoutRef.current);
+
+      if (paginationFrameRef.current) {
+        window.cancelAnimationFrame(paginationFrameRef.current);
+      }
+
+      resizeObserverRef.current?.disconnect();
+      window.removeEventListener('resize', handleResize);
+      editor.off('update', handleEditorUpdate);
+    };
+  }, [editor, schedulePagination, zoomLevel]);
+
+  const pageTrackHeight = Math.max(
+    PAGE_HEIGHT,
+    (pageCount * PAGE_HEIGHT) + (Math.max(pageCount - 1, 0) * PAGE_GAP)
+  );
+
   return (
     <div className="editor-container" style={{ '--editor-scale': `${(zoomLevel || 100) / 100}` }}>
       <div className="editor-content-wrapper">
-        <EditorContent editor={editor} />
+        <div className="document-container">
+          <div className="document-shell" style={{ '--page-track-height': `${pageTrackHeight}px` }}>
+            <div className="page-stack" aria-hidden="true">
+              {Array.from({ length: pageCount }, (_, index) => (
+                <div className="page" key={`page-${index}`} />
+              ))}
+            </div>
+
+            <div className="editor-root-wrapper">
+              <EditorContent editor={editor} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
