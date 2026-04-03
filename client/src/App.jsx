@@ -317,15 +317,35 @@ const LoginRoute = ({ auth, onCreateAndOpenDocument }) => {
       }
 
       try {
-        const document = await onCreateAndOpenDocument({ navigate: false });
-        if (!cancelled && document?.documentId) {
-          navigateToPath(`/doc/${document.documentId}`, { replace: true });
-        } else if (!cancelled) {
-          setStartupError('Could not create a document. Please try again.');
+        const data = await listDocuments();
+        const docsList = data?.documents || data || [];
+        let targetDocId = null;
+
+        if (Array.isArray(docsList) && docsList.length > 0) {
+          const sortedDocs = [...docsList].sort((a, b) => {
+            const dateA = new Date(a.updatedAt || a.lastUpdated || a.createdAt || 0);
+            const dateB = new Date(b.updatedAt || b.lastUpdated || b.createdAt || 0);
+            return dateB - dateA;
+          });
+          const firstDoc = sortedDocs[0];
+          targetDocId = firstDoc.documentId || firstDoc._id || firstDoc.id;
+        }
+
+        if (targetDocId) {
+          if (!cancelled) {
+            navigateToPath(`/doc/${targetDocId}`, { replace: true });
+          }
+        } else {
+          const document = await onCreateAndOpenDocument({ navigate: false });
+          if (!cancelled && document?.documentId) {
+            navigateToPath(`/doc/${document.documentId}`, { replace: true });
+          } else if (!cancelled) {
+            setStartupError('Could not create a document. Please try again.');
+          }
         }
       } catch (error) {
         if (!cancelled) {
-          setStartupError(error.response?.data?.message || error.message || 'Failed to create your first document');
+          setStartupError(error.response?.data?.message || error.message || 'Failed to initialize workspace');
         }
       }
     };
