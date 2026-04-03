@@ -1,28 +1,49 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock, RotateCcw, Save, Tag } from 'lucide-react';
-import VersionPreview from './VersionPreview';
+import { Clock, Save, Tag } from 'lucide-react';
 import { socket } from '../services/socket';
-import { createVersion, getVersion, listVersions } from '../services/versionService';
-import { buildDiffSegments } from '../utils/versionUtils';
+import { createVersion, listVersions } from '../services/versionService';
+import { formatDiffSummary, getDiffStats } from '../utils/versionUtils';
 import './HistoryPanel.css';
 
-const formatVersionLabel = (version) => {
+const formatVersionHeading = (version) => {
   if (version.name) {
     return version.name;
   }
 
-  return new Date(version.createdAt).toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  return new Date(version.createdAt).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
   });
 };
 
-const groupVersionsByDate = (versions) => versions.reduce((groups, version) => {
-  const key = new Date(version.createdAt).toLocaleDateString([], {
-    weekday: 'short',
+const getGroupLabel = (createdAt) => {
+  const targetDate = new Date(createdAt);
+  const today = new Date();
+  const targetStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.round((todayStart - targetStart) / 86400000);
+
+  if (diffDays === 0) {
+    return 'Today';
+  }
+
+  if (diffDays === 1) {
+    return 'Yesterday';
+  }
+
+  return targetDate.toLocaleDateString([], {
     month: 'short',
     day: 'numeric',
+    year: targetDate.getFullYear() === today.getFullYear() ? undefined : 'numeric',
   });
+};
+
+const sortVersionsDescending = (versions) => [...versions].sort(
+  (left, right) => new Date(right.createdAt) - new Date(left.createdAt),
+);
+
+const groupVersionsByDate = (versions) => sortVersionsDescending(versions).reduce((groups, version) => {
+  const key = getGroupLabel(version.createdAt);
 
   if (!groups[key]) {
     groups[key] = [];
@@ -34,44 +55,42 @@ const groupVersionsByDate = (versions) => versions.reduce((groups, version) => {
 
 const HistorySidebar = ({
   documentId,
-  currentText,
   currentUser,
   canEdit,
   onClose,
-  onRestoreVersion,
   panelRef,
+  selectedVersionId,
+  selectedVersion,
+  previewLoading,
+  mode,
+  currentText,
+  onSelectVersion,
+  onBackToCurrent,
+  onVersionsLoaded,
 }) => {
   const [versions, setVersions] = useState([]);
-  const [selectedVersionId, setSelectedVersionId] = useState(null);
-  const [selectedVersion, setSelectedVersion] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveSummary, setSaveSummary] = useState('');
   const [isSavingVersion, setIsSavingVersion] = useState(false);
-  const [restorePendingId, setRestorePendingId] = useState(null);
-  const loadVersions = useCallback(async ({ preserveSelection = true } = {}) => {
+
+  const loadVersions = useCallback(async () => {
     setLoading(true);
 
     try {
       const data = await listVersions(documentId);
       setVersions(data);
-
-      const nextSelectedId = preserveSelection && selectedVersionId
-        ? (data.some((item) => item.versionId === selectedVersionId) ? selectedVersionId : data[0]?.versionId)
-        : data[0]?.versionId;
-
-      setSelectedVersionId(nextSelectedId || null);
+      onVersionsLoaded?.(data);
     } catch (error) {
       console.error('Failed to load versions:', error);
     } finally {
       setLoading(false);
     }
-  }, [documentId, selectedVersionId]);
+  }, [documentId, onVersionsLoaded]);
 
   useEffect(() => {
-    loadVersions({ preserveSelection: false });
-  }, [documentId, loadVersions]);
+    loadVersions();
+  }, [loadVersions]);
 
   useEffect(() => {
     const handleVersionEvent = () => {
@@ -87,49 +106,19 @@ const HistorySidebar = ({
     };
   }, [loadVersions]);
 
-  useEffect(() => {
-    if (!selectedVersionId) {
-      setSelectedVersion(null);
-      return;
-    }
+  const groupedVersions = useMemo(() => {
+    const enrichedVersions = versions.map((version) => {
+      const diffStats = getDiffStats(version.textSnapshot || '', currentText || '');
 
-    let cancelled = false;
-    const loadSelectedVersion = async () => {
-      setPreviewLoading(true);
+      return {
+        ...version,
+        diffStats,
+        diffSummary: formatDiffSummary(diffStats),
+      };
+    });
 
-      try {
-        const version = await getVersion(documentId, selectedVersionId);
-        if (!cancelled) {
-          setSelectedVersion(version);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setSelectedVersion(null);
-        }
-        console.error('Failed to load version preview:', error);
-      } finally {
-        if (!cancelled) {
-          setPreviewLoading(false);
-        }
-      }
-    };
-
-    loadSelectedVersion();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [documentId, selectedVersionId]);
-
-  const groupedVersions = useMemo(() => groupVersionsByDate(versions), [versions]);
-
-  const diffSegments = useMemo(() => {
-    if (!selectedVersion) {
-      return [];
-    }
-
-    return buildDiffSegments(selectedVersion.textSnapshot || '', currentText || '');
-  }, [currentText, selectedVersion]);
+    return groupVersionsByDate(enrichedVersions);
+  }, [currentText, versions]);
 
   const handleSaveVersion = async () => {
     setIsSavingVersion(true);
@@ -145,25 +134,11 @@ const HistorySidebar = ({
 
       setSaveName('');
       setSaveSummary('');
-      await loadVersions({ preserveSelection: false });
+      await loadVersions();
     } catch (error) {
       console.error('Failed to save version:', error);
     } finally {
       setIsSavingVersion(false);
-    }
-  };
-
-  const handleRestore = async () => {
-    if (!selectedVersion) {
-      return;
-    }
-
-    setRestorePendingId(selectedVersion.versionId);
-
-    try {
-      await onRestoreVersion(selectedVersion.versionId);
-    } finally {
-      setRestorePendingId(null);
     }
   };
 
@@ -174,13 +149,13 @@ const HistorySidebar = ({
         <div className="history-header">
           <div>
             <h3>Version History</h3>
-            <p className="history-subtitle">Browse snapshots, compare changes, and restore safely.</p>
+            <p className="history-subtitle">Select a version to preview it in the main editor.</p>
           </div>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
 
-        <div className="history-sidebar-content">
-          <div className="history-sidebar-column">
+        <div className="history-sidebar-content history-sidebar-content-single">
+          <div className="history-sidebar-column history-sidebar-column-single">
             <div className="panel-card version-save-card">
               <label className="panel-label" htmlFor="version-name">Save a version</label>
               <input
@@ -202,6 +177,22 @@ const HistorySidebar = ({
               </button>
             </div>
 
+            {mode === 'preview' ? (
+              <div className="panel-card history-mode-card">
+                <p className="panel-label">Viewing in editor</p>
+                <p className="panel-subtle">
+                  {previewLoading
+                    ? 'Loading selected version...'
+                    : selectedVersion
+                      ? `${selectedVersion.createdBy?.name || 'System'} · ${new Date(selectedVersion.createdAt).toLocaleString()}`
+                      : 'Previewing a historical version.'}
+                </p>
+                <button className="secondary-chip history-mode-button" onClick={onBackToCurrent}>
+                  Back to current
+                </button>
+              </div>
+            ) : null}
+
             <div className="version-list-shell version-list-shell-sidebar">
               {loading ? (
                 <p className="history-msg">Loading versions...</p>
@@ -213,18 +204,24 @@ const HistorySidebar = ({
                     <p className="version-group-label">{dateLabel}</p>
                     <ul className="history-list">
                       {items.map((version) => {
-                        const isActive = version.versionId === selectedVersionId;
+                        const isActive = version.versionId === selectedVersionId && mode === 'preview';
 
                         return (
                           <li key={version.versionId}>
                             <button
                               type="button"
                               className={`history-item version-list-item ${isActive ? 'version-list-item-active' : ''}`}
-                              onClick={() => setSelectedVersionId(version.versionId)}
+                              onClick={() => onSelectVersion(version.versionId)}
                             >
                               <div className="history-meta">
-                                <span>{formatVersionLabel(version)}</span>
-                                <small>{version.createdBy?.name || 'System'} · {version.summary || 'Snapshot saved'}</small>
+                                <div className="version-author-row">
+                                  <span className="version-author-name">{version.createdBy?.name || 'System'}</span>
+                                  <span className="version-version-heading">{formatVersionHeading(version)}</span>
+                                </div>
+                                <small className="version-summary-copy">{version.summary || 'Snapshot saved'}</small>
+                                <small className={`version-diff-summary ${!version.diffStats.added && !version.diffStats.removed ? 'version-diff-summary-empty' : ''}`}>
+                                  {version.diffSummary}
+                                </small>
                               </div>
                               <div className="version-list-tags">
                                 <span className="version-tag">
@@ -236,7 +233,15 @@ const HistorySidebar = ({
                                     <Tag size={12} />
                                     Named
                                   </span>
-                                ) : null}
+                                ) : version.isAutoSave === false ? (
+                                  <span className="version-tag">
+                                    Manual
+                                  </span>
+                                ) : (
+                                  <span className="version-tag">
+                                    Auto
+                                  </span>
+                                )}
                               </div>
                             </button>
                           </li>
@@ -247,62 +252,6 @@ const HistorySidebar = ({
                 ))
               )}
             </div>
-          </div>
-
-          <div className="history-sidebar-preview">
-            {!selectedVersionId ? (
-              <div className="version-empty-state">
-                <p>Select a version to load its preview.</p>
-              </div>
-            ) : previewLoading || !selectedVersion ? (
-              <div className="version-empty-state">
-                <p>Loading preview...</p>
-              </div>
-            ) : (
-              <>
-                <div className="version-toolbar">
-                  <div>
-                    <h4>{formatVersionLabel(selectedVersion)}</h4>
-                    <p className="panel-subtle">
-                      {selectedVersion.createdBy?.name || 'System'} saved this on{' '}
-                      {new Date(selectedVersion.createdAt).toLocaleString()}.
-                    </p>
-                  </div>
-                  <button
-                    className="panel-primary version-restore-button"
-                    disabled={!canEdit || restorePendingId === selectedVersion.versionId}
-                    onClick={handleRestore}
-                  >
-                    <RotateCcw size={15} />
-                    {restorePendingId === selectedVersion.versionId ? 'Restoring...' : 'Restore'}
-                  </button>
-                </div>
-
-                <div className="panel-card">
-                  <p className="panel-label">Preview</p>
-                  <VersionPreview stateBuffer={selectedVersion.stateBuffer} />
-                </div>
-
-                <div className="panel-card">
-                  <p className="panel-label">Diff vs current document</p>
-                  <p className="panel-subtle">Green text was added after this snapshot. Red text was removed.</p>
-                  <div className="version-diff">
-                    {diffSegments.length === 0 ? (
-                      <p className="panel-subtle">No text changes detected.</p>
-                    ) : (
-                      diffSegments.map((segment, index) => (
-                        <span
-                          key={`${segment.type}-${index}`}
-                          className={`diff-token diff-token-${segment.type}`}
-                        >
-                          {segment.value}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
       </aside>

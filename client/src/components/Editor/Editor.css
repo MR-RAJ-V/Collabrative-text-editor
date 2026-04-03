@@ -213,6 +213,12 @@
   z-index: 1;
 }
 
+.editor-root-wrapper-preview-hidden {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
 .editor-root-wrapper .ProseMirror {
   outline: none;
   min-height: 963px;
@@ -270,6 +276,47 @@
   color: #e2e8f0;
   border-radius: 12px;
   padding: 16px;
+}
+
+.editor-preview-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 794px;
+  min-height: var(--page-track-height, 1123px);
+  padding: 80px 60px;
+  box-sizing: border-box;
+  z-index: 2;
+  background: transparent;
+  cursor: text;
+}
+
+.editor-preview-layer .version-preview-shell {
+  border: 0;
+  background: transparent;
+}
+
+.editor-preview-layer .version-preview-editor .ProseMirror {
+  min-height: 963px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-color);
+}
+
+.version-inline-added {
+  background: rgba(34, 197, 94, 0.2);
+  color: #166534;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  box-shadow: inset 0 -1px 0 rgba(34, 197, 94, 0.28);
+}
+
+.version-inline-removed {
+  background: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
+  text-decoration: line-through;
+  border-radius: 4px;
+  box-shadow: inset 0 -1px 0 rgba(239, 68, 68, 0.24);
 }
 
 .collaboration-cursor__caret {

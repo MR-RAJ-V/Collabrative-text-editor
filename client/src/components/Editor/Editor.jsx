@@ -14,9 +14,11 @@ import { FontSize } from './FontSize';
 import { ImageNode } from './ImageNode';
 import { TextColor } from './TextColor';
 import { TextAlign } from './TextAlign';
+import VersionPreview from '../VersionPreview';
 import { socket } from '../../services/socket';
 import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
+import { extractComparableTextFromDoc } from '../../utils/versionUtils';
 import './Editor.css';
 
 const withCursorOpacity = (color, opacityHex = '33') => {
@@ -109,11 +111,17 @@ const EditorComponent = ({
   searchQuery,
   comments,
   zoomLevel,
+  mode = 'edit',
+  previewVersion = null,
+  currentComparableText = '',
+  currentVersionAuthorName = '',
   onContentChange,
+  onComparableTextChange,
   onOutlineChange,
   onSelectionChange,
   onEditorReady,
   onOpenSearch,
+  onPreviewExit,
 }) => {
   const [pageCount, setPageCount] = useState(1);
   const paginationFrameRef = useRef(0);
@@ -121,6 +129,16 @@ const EditorComponent = ({
   const resizeObserverRef = useRef(null);
   const imageCleanupRef = useRef(() => {});
   const lastPageCountRef = useRef(1);
+  const modeRef = useRef(mode);
+  const comparableTextChangeRef = useRef(onComparableTextChange);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    comparableTextChangeRef.current = onComparableTextChange;
+  }, [onComparableTextChange]);
 
   const yDocState = useMemo(() => {
     const ydoc = new Y.Doc();
@@ -211,7 +229,7 @@ const EditorComponent = ({
 
     // 1. DOC SYNC
     ydoc.on('update', (update, origin) => {
-      if (origin !== socket) {
+      if (origin !== socket && modeRef.current === 'edit') {
         socket.emit('yjs-update', update);
       }
     });
@@ -224,11 +242,13 @@ const EditorComponent = ({
 
     // 2. AWARENESS SYNC (Cursors)
     const handleAwarenessLocalUpdate = ({ added, updated, removed }, origin) => {
-      if (origin !== socket) {
-        const changedClients = added.concat(updated, removed);
-        const update = encodeAwarenessUpdate(awareness, changedClients);
-        socket.emit('cursor-update', update);
+      if (origin === socket || modeRef.current !== 'edit') {
+        return;
       }
+
+      const changedClients = added.concat(updated, removed);
+      const update = encodeAwarenessUpdate(awareness, changedClients);
+      socket.emit('cursor-update', update);
     };
 
     const handleAwarenessRemoteUpdate = (update) => {
@@ -283,11 +303,15 @@ const EditorComponent = ({
     },
     onCreate: ({ editor: instance }) => {
       onContentChange?.(instance.getText());
+      comparableTextChangeRef.current?.(extractComparableTextFromDoc(instance.state.doc));
       onOutlineChange?.(extractOutline(instance));
     },
     onUpdate: ({ editor: instance }) => {
-      socket.emit('typing-status', true);
+      if (modeRef.current === 'edit') {
+        socket.emit('typing-status', true);
+      }
       onContentChange?.(instance.getText());
+      comparableTextChangeRef.current?.(extractComparableTextFromDoc(instance.state.doc));
       onOutlineChange?.(extractOutline(instance));
     },
   }, [yDocState, currentUser, onContentChange, onOutlineChange]);
@@ -297,8 +321,8 @@ const EditorComponent = ({
       return;
     }
 
-    editor.setEditable(canEdit);
-  }, [canEdit, editor]);
+    editor.setEditable(canEdit && mode === 'edit');
+  }, [canEdit, editor, mode]);
 
   useEffect(() => {
     if (editor) {
@@ -411,9 +435,26 @@ const EditorComponent = ({
               ))}
             </div>
 
-            <div className="editor-root-wrapper">
+            <div className={`editor-root-wrapper ${mode === 'preview' ? 'editor-root-wrapper-preview-hidden' : ''}`}>
               <EditorContent editor={editor} />
             </div>
+
+            {mode === 'preview' && previewVersion ? (
+              <div
+                className="editor-preview-layer"
+                onPointerDown={onPreviewExit}
+                role="button"
+                tabIndex={-1}
+                aria-label="Exit version preview"
+              >
+                <VersionPreview
+                  stateBuffer={previewVersion.stateBuffer}
+                  currentText={currentComparableText}
+                  versionAuthorName={previewVersion.createdBy?.name || 'System'}
+                  currentVersionAuthorName={currentVersionAuthorName}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

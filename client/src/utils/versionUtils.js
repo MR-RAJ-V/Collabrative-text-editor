@@ -59,9 +59,29 @@ export const extractTextFromYjsState = (state) => {
   }
 };
 
-export const buildDiffSegments = (beforeText, afterText) => {
-  const before = (beforeText || '').split(/(\s+)/).filter(Boolean);
-  const after = (afterText || '').split(/(\s+)/).filter(Boolean);
+export const normalizeVersionText = (value) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+export const extractComparableTextFromDoc = (doc) => {
+  if (!doc) {
+    return '';
+  }
+
+  let output = '';
+
+  doc.descendants((node) => {
+    if (node.isText) {
+      output += node.text || '';
+    }
+  });
+
+  return output;
+};
+
+export const buildDiffRanges = (beforeText, afterText) => {
+  const before = normalizeVersionText(beforeText).split(/(\s+)/).filter(Boolean);
+  const after = normalizeVersionText(afterText).split(/(\s+)/).filter(Boolean);
   const dp = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
 
   for (let i = before.length - 1; i >= 0; i -= 1) {
@@ -77,44 +97,108 @@ export const buildDiffSegments = (beforeText, afterText) => {
   const segments = [];
   let i = 0;
   let j = 0;
+  let beforeOffset = 0;
+  let afterOffset = 0;
 
-  const pushSegment = (type, value) => {
+  const pushSegment = (type, value, beforeStart, beforeEnd, afterStart, afterEnd) => {
     if (!value) {
       return;
     }
 
     const previous = segments[segments.length - 1];
-    if (previous?.type === type) {
+    if (
+      previous?.type === type
+      && previous.beforeEnd === beforeStart
+      && previous.afterEnd === afterStart
+    ) {
       previous.value += value;
+      previous.beforeEnd = beforeEnd;
+      previous.afterEnd = afterEnd;
       return;
     }
 
-    segments.push({ type, value });
+    segments.push({
+      type,
+      value,
+      beforeStart,
+      beforeEnd,
+      afterStart,
+      afterEnd,
+    });
   };
 
   while (i < before.length && j < after.length) {
     if (before[i] === after[j]) {
-      pushSegment('equal', before[i]);
+      const value = before[i];
+      pushSegment('equal', value, beforeOffset, beforeOffset + value.length, afterOffset, afterOffset + value.length);
+      beforeOffset += value.length;
+      afterOffset += value.length;
       i += 1;
       j += 1;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      pushSegment('delete', before[i]);
+      const value = before[i];
+      pushSegment('delete', value, beforeOffset, beforeOffset + value.length, afterOffset, afterOffset);
+      beforeOffset += value.length;
       i += 1;
     } else {
-      pushSegment('insert', after[j]);
+      const value = after[j];
+      pushSegment('insert', value, beforeOffset, beforeOffset, afterOffset, afterOffset + value.length);
+      afterOffset += value.length;
       j += 1;
     }
   }
 
   while (i < before.length) {
-    pushSegment('delete', before[i]);
+    const value = before[i];
+    pushSegment('delete', value, beforeOffset, beforeOffset + value.length, afterOffset, afterOffset);
+    beforeOffset += value.length;
     i += 1;
   }
 
   while (j < after.length) {
-    pushSegment('insert', after[j]);
+    const value = after[j];
+    pushSegment('insert', value, beforeOffset, beforeOffset, afterOffset, afterOffset + value.length);
+    afterOffset += value.length;
     j += 1;
   }
 
   return segments;
+};
+
+export const buildDiffSegments = (beforeText, afterText) => {
+  return buildDiffRanges(beforeText, afterText).map(({ type, value }) => ({ type, value }));
+};
+
+export const getDiffStats = (beforeText, afterText) => {
+  const ranges = buildDiffRanges(beforeText, afterText);
+
+  return ranges.reduce((stats, range) => {
+    if (range.type === 'insert') {
+      stats.added += range.value.length;
+    }
+
+    if (range.type === 'delete') {
+      stats.removed += range.value.length;
+    }
+
+    return stats;
+  }, { added: 0, removed: 0 });
+};
+
+export const formatDiffSummary = ({ added = 0, removed = 0 } = {}) => {
+  const parts = [];
+
+  if (added > 0) {
+    parts.push(`Added ${added} char${added === 1 ? '' : 's'}`);
+  }
+
+  if (removed > 0) {
+    parts.push(`Removed ${removed} char${removed === 1 ? '' : 's'}`);
+  }
+
+  if (!parts.length) {
+    return 'No differences from current version';
+  }
+
+  return parts.join(' • ');
 };

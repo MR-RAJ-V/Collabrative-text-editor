@@ -9,7 +9,6 @@ import Dialog from './components/Dialog';
 import EditorLayout from './components/EditorLayout';
 import HistorySidebar from './components/HistorySidebar';
 import DocumentsSidebar from './components/DocumentsSidebar';
-import OutlineSidebar from './components/OutlineSidebar';
 import CommentsPanel from './components/CommentsPanel';
 import SearchPanel from './components/SearchPanel';
 import ShareModal from './components/ShareModal';
@@ -26,6 +25,7 @@ import {
 import { socket } from './services/socket';
 import {
   captureVersionOnUnload,
+  getVersion,
   normalizeBinaryPayload,
   restoreVersion,
 } from './services/versionService';
@@ -38,6 +38,7 @@ import {
   TEXT_STYLE_OPTIONS,
   formatActions,
 } from './components/Editor/editorCommands';
+import { extractComparableTextFromDoc } from './utils/versionUtils';
 import './App.css';
 
 const REDIRECT_AFTER_LOGIN_KEY = 'redirectAfterLogin';
@@ -149,6 +150,13 @@ const sanitizeFilename = (value) => (value || 'untitled-document')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'untitled-document';
+
+const formatVersionBannerDate = (value) => new Date(value).toLocaleString([], {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
 
 const usePathname = () => {
   const [pathname, setPathname] = useState(window.location.pathname);
@@ -477,16 +485,24 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const [searchMatches, setSearchMatches] = useState([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [documentText, setDocumentText] = useState('');
+  const [documentComparableText, setDocumentComparableText] = useState('');
   const [documentState, setDocumentState] = useState(new Uint8Array());
   const [editorInstanceKey, setEditorInstanceKey] = useState(0);
   const [eventsFeed, setEventsFeed] = useState([]);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [toolbarEditor, setToolbarEditor] = useState(null);
   const [editorUiState, setEditorUiState] = useState(null);
-  const [outlineHeadings, setOutlineHeadings] = useState([]);
-  const [activeHeadingId, setActiveHeadingId] = useState(null);
+  const [, setOutlineHeadings] = useState([]);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [dialogState, setDialogState] = useState(null);
+  const [restorePendingVersionId, setRestorePendingVersionId] = useState(null);
+  const [latestVersionMeta, setLatestVersionMeta] = useState(null);
+  const [versionView, setVersionView] = useState({
+    mode: 'edit',
+    selectedVersionId: null,
+    selectedVersion: null,
+    previewLoading: false,
+  });
   const docsState = useDocuments(auth.isAuthenticated);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 900);
 
@@ -494,9 +510,12 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const panelRef = useRef(null);
   const saveStatusTimeout = useRef(null);
   const titleInputRef = useRef(null);
+  const updateDocumentTitleRef = useRef(docsState.updateDocumentTitle);
   const actor = currentUser || guestUser;
   const canEdit = Boolean(auth.isAuthenticated && docAccess?.canEdit);
   const canManage = Boolean(auth.isAuthenticated && docAccess?.canManage);
+  const isPreviewMode = versionView.mode === 'preview';
+  const editorCanEdit = canEdit && !isPreviewMode;
 
   const shareableLink = useMemo(() => {
     if (!documentId) {
@@ -505,6 +524,10 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
     return `${window.location.origin}/doc/${documentId}`;
   }, [documentId]);
+
+  useEffect(() => {
+    updateDocumentTitleRef.current = docsState.updateDocumentTitle;
+  }, [docsState.updateDocumentTitle]);
 
   const updateSearchMatches = useCallback(() => {
     const editor = editorRef.current;
@@ -548,24 +571,22 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   }, [documentText, updateSearchMatches]);
 
   useEffect(() => {
-    if (!outlineHeadings.length) {
-      setActiveHeadingId(null);
-      return;
-    }
-
-    const current = [...outlineHeadings]
-      .reverse()
-      .find((heading) => selection.from >= heading.position);
-
-    setActiveHeadingId(current?.id || outlineHeadings[0]?.id || null);
-  }, [outlineHeadings, selection.from]);
-
-  useEffect(() => {
     setDocumentId(routeDocumentId);
   }, [routeDocumentId]);
 
   useEffect(() => {
     setActivePanel(null);
+  }, [routeDocumentId]);
+
+  useEffect(() => {
+    setVersionView({
+      mode: 'edit',
+      selectedVersionId: null,
+      selectedVersion: null,
+      previewLoading: false,
+    });
+    setLatestVersionMeta(null);
+    setRestorePendingVersionId(null);
   }, [routeDocumentId]);
 
   useEffect(() => {
@@ -576,6 +597,51 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
     return () => window.clearTimeout(timeoutId);
   }, [routeDocumentId]);
+
+  useEffect(() => {
+    if (!documentId || !versionView.selectedVersionId) {
+      setVersionView((current) => (
+        current.selectedVersion || current.previewLoading
+          ? { ...current, selectedVersion: null, previewLoading: false }
+          : current
+      ));
+      return undefined;
+    }
+
+    let cancelled = false;
+    const targetVersionId = versionView.selectedVersionId;
+
+    setVersionView((current) => ({ ...current, previewLoading: true }));
+
+    const loadSelectedVersion = async () => {
+      try {
+        const version = await getVersion(documentId, targetVersionId);
+
+        if (!cancelled) {
+          setVersionView((current) => (
+            current.selectedVersionId === targetVersionId
+              ? { ...current, selectedVersion: version, previewLoading: false, mode: 'preview' }
+              : current
+          ));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setVersionView((current) => (
+            current.selectedVersionId === targetVersionId
+              ? { ...current, selectedVersion: null, previewLoading: false }
+              : current
+          ));
+        }
+        console.error('Failed to load selected version:', error);
+      }
+    };
+
+    loadSelectedVersion();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, versionView.selectedVersionId]);
 
   useEffect(() => {
     let mounted = true;
@@ -592,7 +658,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       setToolbarEditor(null);
       setEditorUiState(null);
       setOutlineHeadings([]);
-      setActiveHeadingId(null);
 
       try {
         const initialDoc = await getDocument(routeDocumentId);
@@ -665,7 +730,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         socket.on('title-init', (value) => setTitle(value));
         socket.on('title-update', (value) => {
           setTitle(value);
-          docsState.updateDocumentTitle(initialDoc.documentId, value, { immediate: false, persist: false });
+          updateDocumentTitleRef.current?.(initialDoc.documentId, value, { immediate: false, persist: false });
         });
 
         socket.on('version-created', (version) => {
@@ -675,6 +740,13 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         socket.on('version-restored', ({ state, restoredBy, sourceVersion }) => {
           setDocumentState(normalizeBinaryPayload(state));
           setEditorInstanceKey((value) => value + 1);
+          setVersionView({
+            mode: 'edit',
+            selectedVersionId: null,
+            selectedVersion: null,
+            previewLoading: false,
+          });
+          setRestorePendingVersionId(null);
           setLastSaved(new Date());
           setSaveStatus('Saved');
           setEventsFeed((feed) => [
@@ -780,20 +852,53 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     saveStatusTimeout.current = setTimeout(() => setSaveStatus(isConnected ? 'Saved' : 'Offline'), 2200);
   }, [isConnected]);
 
-  const handleRestoreVersion = async (versionId) => {
+  const handleSelectVersion = useCallback((versionId) => {
+    if (!versionId) {
+      return;
+    }
+
+    setVersionView((current) => ({
+      mode: 'preview',
+      selectedVersionId: versionId,
+      selectedVersion: current.selectedVersionId === versionId ? current.selectedVersion : null,
+      previewLoading: true,
+    }));
+  }, []);
+
+  const handleExitVersionPreview = useCallback(() => {
+    setVersionView({
+      mode: 'edit',
+      selectedVersionId: null,
+      selectedVersion: null,
+      previewLoading: false,
+    });
+    setRestorePendingVersionId(null);
+  }, []);
+
+  const handleVersionsLoaded = useCallback((versions) => {
+    const [latestVersion = null] = Array.isArray(versions) ? versions : [];
+    setLatestVersionMeta(latestVersion);
+  }, []);
+
+  const handleRestoreVersion = useCallback(async (versionId) => {
+    setRestorePendingVersionId(versionId);
+
     try {
       await restoreVersion(documentId, versionId, { createdBy: actor });
+      handleExitVersionPreview();
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to restore version');
+    } finally {
+      setRestorePendingVersionId(null);
     }
-  };
+  }, [actor, documentId, handleExitVersionPreview]);
 
   const handleTitleChange = (event) => {
     const newTitle = event.target.value;
     setTitle(newTitle);
     docsState.updateDocumentTitle(documentId, newTitle, { immediate: false, persist: true });
 
-    if (!canEdit) {
+    if (!editorCanEdit) {
       return;
     }
 
@@ -807,21 +912,13 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     setEditorUiState(getEditorUiSnapshot(editor, selection));
     if (editor) {
       setDocumentText(editor.getText());
+      setDocumentComparableText(extractComparableTextFromDoc(editor.state.doc));
       updateSearchMatches();
     }
   };
 
   const handleOutlineChange = useCallback((headings) => {
     setOutlineHeadings(headings || []);
-  }, []);
-
-  const handleJumpToHeading = useCallback((heading) => {
-    if (!editorRef.current || !heading?.position) {
-      return;
-    }
-
-    setActiveHeadingId(heading.id);
-    editorRef.current.chain().focus().setTextSelection(heading.position + 1).run();
   }, []);
 
   const handleAddComment = async (message) => {
@@ -895,7 +992,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
   const handleClipboardCut = useCallback(async () => {
     const editor = editorRef.current;
-    if (!editor || !canEdit) {
+    if (!editor || !editorCanEdit) {
       return;
     }
 
@@ -907,11 +1004,11 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     await navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, ' '));
     editor.chain().focus().deleteSelection().run();
     markSaving();
-  }, [canEdit, markSaving]);
+  }, [editorCanEdit, markSaving]);
 
   const handleClipboardPaste = useCallback(async () => {
     const editor = editorRef.current;
-    if (!editor || !canEdit) {
+    if (!editor || !editorCanEdit) {
       return;
     }
 
@@ -920,11 +1017,11 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       editor.chain().focus().insertContent(content).run();
       markSaving();
     }
-  }, [canEdit, markSaving]);
+  }, [editorCanEdit, markSaving]);
 
   const handleInsertLink = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor || !canEdit) {
+    if (!editor || !editorCanEdit) {
       return;
     }
 
@@ -942,11 +1039,11 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
     editor.chain().focus().extendMarkRange('link').setLink({ href: nextUrl.trim() }).run();
     markSaving();
-  }, [canEdit, markSaving]);
+  }, [editorCanEdit, markSaving]);
 
   const handleInsertImage = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor || !canEdit) {
+    if (!editor || !editorCanEdit) {
       return;
     }
 
@@ -957,7 +1054,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
     editor.chain().focus().setImage({ src: src.trim(), alt: 'Inserted image' }).run();
     markSaving();
-  }, [canEdit, markSaving]);
+  }, [editorCanEdit, markSaving]);
 
   const handleSearchNext = () => {
     if (!searchMatches.length || !editorRef.current) {
@@ -970,7 +1067,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   };
 
   const handleReplaceOne = () => {
-    if (!searchMatches.length || !editorRef.current || !canEdit) {
+    if (!searchMatches.length || !editorRef.current || !editorCanEdit) {
       return;
     }
 
@@ -979,7 +1076,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   };
 
   const handleReplaceAll = () => {
-    if (!searchMatches.length || !editorRef.current || !canEdit) {
+    if (!searchMatches.length || !editorRef.current || !editorCanEdit) {
       return;
     }
 
@@ -1080,7 +1177,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
   const runEditorCommand = useCallback((command, { save = true } = {}) => {
     const editor = editorRef.current;
-    if (!editor || !canEdit) {
+    if (!editor || !editorCanEdit) {
       return false;
     }
 
@@ -1090,7 +1187,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     }
 
     return didRun;
-  }, [canEdit, markSaving]);
+  }, [editorCanEdit, markSaving]);
 
   const formattingActions = useMemo(() => ({
     undo: () => runEditorCommand((editor) => formatActions.undo(editor)),
@@ -1145,7 +1242,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         label: 'File',
         items: [
           { label: 'New Document', onSelect: onCreateAndOpenDocument },
-          { label: 'Rename Document', onSelect: handleFocusTitle, disabled: !canEdit },
+          { label: 'Rename Document', onSelect: handleFocusTitle, disabled: !editorCanEdit },
           { type: 'separator' },
           { label: 'Download as .txt', onSelect: handleDownloadText },
         ],
@@ -1153,12 +1250,12 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       {
         label: 'Edit',
         items: [
-          { label: 'Undo', shortcut: 'Ctrl+Z', onSelect: formattingActions.undo, disabled: !canEdit || !formatState?.canUndo },
-          { label: 'Redo', shortcut: 'Ctrl+Y', onSelect: formattingActions.redo, disabled: !canEdit || !formatState?.canRedo },
+          { label: 'Undo', shortcut: 'Ctrl+Z', onSelect: formattingActions.undo, disabled: !editorCanEdit || !formatState?.canUndo },
+          { label: 'Redo', shortcut: 'Ctrl+Y', onSelect: formattingActions.redo, disabled: !editorCanEdit || !formatState?.canRedo },
           { type: 'separator' },
-          { label: 'Cut', shortcut: 'Ctrl+X', onSelect: () => handleClipboardCut().catch(() => {}), disabled: !canEdit || !hasSelection },
+          { label: 'Cut', shortcut: 'Ctrl+X', onSelect: () => handleClipboardCut().catch(() => {}), disabled: !editorCanEdit || !hasSelection },
           { label: 'Copy', shortcut: 'Ctrl+C', onSelect: () => handleClipboardCopy().catch(() => {}) },
-          { label: 'Paste', shortcut: 'Ctrl+V', onSelect: () => handleClipboardPaste().catch(() => {}), disabled: !canEdit },
+          { label: 'Paste', shortcut: 'Ctrl+V', onSelect: () => handleClipboardPaste().catch(() => {}), disabled: !editorCanEdit },
         ],
       },
       {
@@ -1172,37 +1269,37 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       {
         label: 'Insert',
         items: [
-          { label: 'Insert Image', onSelect: handleInsertImage, disabled: !canEdit },
-          { label: 'Insert Link', onSelect: handleInsertLink, disabled: !canEdit || !formatState?.canLink },
+          { label: 'Insert Image', onSelect: handleInsertImage, disabled: !editorCanEdit },
+          { label: 'Insert Link', onSelect: handleInsertLink, disabled: !editorCanEdit || !formatState?.canLink },
         ],
       },
       {
         label: 'Format',
         items: [
-          { label: 'Normal text', onSelect: () => formattingActions.setBlockType('paragraph'), disabled: !canEdit, active: formatState?.blockType === 'paragraph' },
-          { label: 'Heading 1', onSelect: () => formattingActions.setBlockType('h1'), disabled: !canEdit, active: formatState?.blockType === 'h1' },
-          { label: 'Heading 2', onSelect: () => formattingActions.setBlockType('h2'), disabled: !canEdit, active: formatState?.blockType === 'h2' },
-          { label: 'Heading 3', onSelect: () => formattingActions.setBlockType('h3'), disabled: !canEdit, active: formatState?.blockType === 'h3' },
+          { label: 'Normal text', onSelect: () => formattingActions.setBlockType('paragraph'), disabled: !editorCanEdit, active: formatState?.blockType === 'paragraph' },
+          { label: 'Heading 1', onSelect: () => formattingActions.setBlockType('h1'), disabled: !editorCanEdit, active: formatState?.blockType === 'h1' },
+          { label: 'Heading 2', onSelect: () => formattingActions.setBlockType('h2'), disabled: !editorCanEdit, active: formatState?.blockType === 'h2' },
+          { label: 'Heading 3', onSelect: () => formattingActions.setBlockType('h3'), disabled: !editorCanEdit, active: formatState?.blockType === 'h3' },
           { type: 'separator' },
-          { label: 'Increase Font Size', onSelect: formattingActions.increaseFontSize, disabled: !canEdit },
-          { label: 'Decrease Font Size', onSelect: formattingActions.decreaseFontSize, disabled: !canEdit },
+          { label: 'Increase Font Size', onSelect: formattingActions.increaseFontSize, disabled: !editorCanEdit },
+          { label: 'Decrease Font Size', onSelect: formattingActions.decreaseFontSize, disabled: !editorCanEdit },
           { type: 'separator' },
-          { label: 'Bold', onSelect: formattingActions.toggleBold, disabled: !canEdit, active: formatState?.isBold },
-          { label: 'Italic', onSelect: formattingActions.toggleItalic, disabled: !canEdit, active: formatState?.isItalic },
-          { label: 'Underline', onSelect: formattingActions.toggleUnderline, disabled: !canEdit, active: formatState?.isUnderline },
-          { label: 'Strikethrough', onSelect: formattingActions.toggleStrike, disabled: !canEdit, active: formatState?.isStrike },
+          { label: 'Bold', onSelect: formattingActions.toggleBold, disabled: !editorCanEdit, active: formatState?.isBold },
+          { label: 'Italic', onSelect: formattingActions.toggleItalic, disabled: !editorCanEdit, active: formatState?.isItalic },
+          { label: 'Underline', onSelect: formattingActions.toggleUnderline, disabled: !editorCanEdit, active: formatState?.isUnderline },
+          { label: 'Strikethrough', onSelect: formattingActions.toggleStrike, disabled: !editorCanEdit, active: formatState?.isStrike },
           { type: 'separator' },
-          { label: 'Align Left', onSelect: () => formattingActions.setTextAlign('left'), disabled: !canEdit, active: formatState?.alignment === 'left' },
-          { label: 'Align Center', onSelect: () => formattingActions.setTextAlign('center'), disabled: !canEdit, active: formatState?.alignment === 'center' },
-          { label: 'Align Right', onSelect: () => formattingActions.setTextAlign('right'), disabled: !canEdit, active: formatState?.alignment === 'right' },
-          { label: 'Justify', onSelect: () => formattingActions.setTextAlign('justify'), disabled: !canEdit, active: formatState?.alignment === 'justify' },
+          { label: 'Align Left', onSelect: () => formattingActions.setTextAlign('left'), disabled: !editorCanEdit, active: formatState?.alignment === 'left' },
+          { label: 'Align Center', onSelect: () => formattingActions.setTextAlign('center'), disabled: !editorCanEdit, active: formatState?.alignment === 'center' },
+          { label: 'Align Right', onSelect: () => formattingActions.setTextAlign('right'), disabled: !editorCanEdit, active: formatState?.alignment === 'right' },
+          { label: 'Justify', onSelect: () => formattingActions.setTextAlign('justify'), disabled: !editorCanEdit, active: formatState?.alignment === 'justify' },
           { type: 'separator' },
-          { label: 'Bullet List', onSelect: formattingActions.toggleBulletList, disabled: !canEdit, active: formatState?.isBulletList },
-          { label: 'Numbered List', onSelect: formattingActions.toggleOrderedList, disabled: !canEdit, active: formatState?.isOrderedList },
-          { label: 'Increase Indent', onSelect: formattingActions.increaseIndent, disabled: !canEdit || !formatState?.canIndent },
-          { label: 'Decrease Indent', onSelect: formattingActions.decreaseIndent, disabled: !canEdit || !formatState?.canOutdent },
+          { label: 'Bullet List', onSelect: formattingActions.toggleBulletList, disabled: !editorCanEdit, active: formatState?.isBulletList },
+          { label: 'Numbered List', onSelect: formattingActions.toggleOrderedList, disabled: !editorCanEdit, active: formatState?.isOrderedList },
+          { label: 'Increase Indent', onSelect: formattingActions.increaseIndent, disabled: !editorCanEdit || !formatState?.canIndent },
+          { label: 'Decrease Indent', onSelect: formattingActions.decreaseIndent, disabled: !editorCanEdit || !formatState?.canOutdent },
           { type: 'separator' },
-          { label: 'Clear Formatting', onSelect: formattingActions.clearFormatting, disabled: !canEdit || !formatState?.canClearFormatting },
+          { label: 'Clear Formatting', onSelect: formattingActions.clearFormatting, disabled: !editorCanEdit || !formatState?.canClearFormatting },
         ],
       },
       {
@@ -1219,7 +1316,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       },
     ];
   }, [
-    canEdit,
+    editorCanEdit,
     handleClipboardCopy,
     handleClipboardCut,
     handleClipboardPaste,
@@ -1309,7 +1406,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         title={title}
         titleInputRef={titleInputRef}
         onTitleChange={handleTitleChange}
-        canEdit={canEdit}
+        canEdit={editorCanEdit}
         saveStatus={saveStatus}
         lastSaved={lastSaved}
         docAccess={docAccess}
@@ -1324,7 +1421,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         )}
         toolbarContent={(
           <TextToolbar
-            canEdit={canEdit}
+            canEdit={editorCanEdit}
             state={effectiveToolbarState}
             actions={formattingActions}
             config={toolbarConfig}
@@ -1372,10 +1469,16 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         <HistorySidebar
           panelRef={panelRef}
           documentId={documentId}
-          currentText={documentText}
           currentUser={actor}
           canEdit={canEdit}
-          onRestoreVersion={handleRestoreVersion}
+          selectedVersionId={versionView.selectedVersionId}
+          selectedVersion={versionView.selectedVersion}
+          previewLoading={versionView.previewLoading}
+          mode={versionView.mode}
+          currentText={documentText}
+          onSelectVersion={handleSelectVersion}
+          onBackToCurrent={handleExitVersionPreview}
+          onVersionsLoaded={handleVersionsLoaded}
           onClose={closeActivePanel}
         />
       ) : null}
@@ -1456,9 +1559,9 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
             }}
             onRenameDocument={async (id, newTitle) => {
               await docsState.renameDocument(id, newTitle);
-              if (id === documentId) {
-                setTitle(newTitle);
-                if (canEdit && socket.connected) {
+                if (id === documentId) {
+                  setTitle(newTitle);
+                if (editorCanEdit && socket.connected) {
                   socket.emit('title-update', newTitle);
                 }
               }
@@ -1481,19 +1584,56 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           </div>
         ) : null}
 
+        {isPreviewMode ? (
+          <div className="version-preview-banner">
+            <div>
+              <span className="version-preview-banner-kicker">Past version</span>
+              <strong>
+                Viewing version history snapshot
+                {versionView.selectedVersion?.name ? `: ${versionView.selectedVersion.name}` : ''}
+              </strong>
+              <p>
+                {versionView.previewLoading
+                  ? 'Loading selected version...'
+                  : versionView.selectedVersion
+                    ? `Viewing version from ${formatVersionBannerDate(versionView.selectedVersion.createdAt)} by ${versionView.selectedVersion.createdBy?.name || 'System'}`
+                    : 'Viewing a historical version.'}
+              </p>
+            </div>
+            <div className="top-button-row">
+              <button
+                className="primary-button"
+                disabled={!canEdit || !versionView.selectedVersion || restorePendingVersionId === versionView.selectedVersion.versionId}
+                onClick={() => handleRestoreVersion(versionView.selectedVersion.versionId)}
+              >
+                {restorePendingVersionId === versionView.selectedVersion?.versionId ? 'Restoring...' : 'Restore this version'}
+              </button>
+              <button className="secondary-chip" onClick={handleExitVersionPreview}>
+                Back to current
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <EditorComponent
           key={editorInstanceKey}
           currentUser={actor}
           initialState={documentState}
-          canEdit={canEdit}
+          canEdit={editorCanEdit}
           searchQuery={searchQuery}
           comments={comments}
           zoomLevel={zoomLevel}
+          mode={versionView.mode}
+          previewVersion={versionView.selectedVersion}
+          currentComparableText={documentComparableText}
+          currentVersionAuthorName={latestVersionMeta?.createdBy?.name || ''}
           onContentChange={setDocumentText}
+          onComparableTextChange={setDocumentComparableText}
           onOutlineChange={handleOutlineChange}
           onSelectionChange={setSelection}
           onEditorReady={handleEditorReady}
           onOpenSearch={() => togglePanel('search')}
+          onPreviewExit={handleExitVersionPreview}
         />
 
         {(eventsFeed.length || heatmap.length) ? (

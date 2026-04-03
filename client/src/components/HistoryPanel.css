@@ -10,7 +10,7 @@
   top: 138px;
   right: 0;
   bottom: 0;
-  width: min(1040px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--panel-bg);
@@ -26,10 +26,19 @@
   min-height: 0;
 }
 
+.history-sidebar-content-single {
+  display: block;
+}
+
 .history-sidebar-column {
   border-right: 1px solid var(--border-color);
   background: linear-gradient(180deg, var(--panel-muted), transparent 40%);
   min-height: 0;
+}
+
+.history-sidebar-column-single {
+  border-right: none;
+  min-height: 100%;
 }
 
 .history-sidebar-preview {
@@ -137,6 +146,28 @@
   color: var(--muted-text);
 }
 
+.version-list-title {
+  font-weight: 700;
+}
+
+.version-author-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.version-author-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-color);
+}
+
+.version-version-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
 .history-list {
   list-style: none;
   margin: 0;
@@ -195,6 +226,26 @@
   color: var(--muted-text);
 }
 
+.version-summary-copy,
+.version-diff-summary {
+  display: block;
+  line-height: 1.45;
+}
+
+.version-summary-copy {
+  margin-top: 2px;
+}
+
+.version-diff-summary {
+  color: #166534;
+  font-weight: 600;
+}
+
+.version-diff-summary-empty {
+  color: var(--muted-text);
+  font-weight: 500;
+}
+
 .history-actions {
   display: flex;
   gap: 8px;
@@ -229,6 +280,16 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
+}
+
+.history-mode-card {
+  margin: 0 18px 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.history-mode-button {
+  justify-self: flex-start;
 }
 
 .version-toolbar h4 {
@@ -305,6 +366,10 @@
 
   .history-sidebar-content {
     grid-template-columns: 1fr;
+  }
+
+  .history-sidebar-content-single {
+    display: block;
   }
 
   .history-sidebar-column {
