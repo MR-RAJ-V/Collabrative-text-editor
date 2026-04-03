@@ -8,6 +8,7 @@ import HeaderActions from './components/HeaderActions';
 import Dialog from './components/Dialog';
 import EditorLayout from './components/EditorLayout';
 import HistorySidebar from './components/HistorySidebar';
+import DocumentsSidebar from './components/DocumentsSidebar';
 import OutlineSidebar from './components/OutlineSidebar';
 import CommentsPanel from './components/CommentsPanel';
 import SearchPanel from './components/SearchPanel';
@@ -30,6 +31,7 @@ import {
 } from './services/versionService';
 import { useTheme } from './hooks/useTheme';
 import { useAuth } from './hooks/useAuth';
+import { useDocuments } from './hooks/useDocuments';
 import {
   FONT_FAMILIES,
   FONT_SIZES,
@@ -465,6 +467,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const [activeHeadingId, setActiveHeadingId] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [dialogState, setDialogState] = useState(null);
+  const docsState = useDocuments(auth.isAuthenticated);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 900);
 
   const editorRef = useRef(null);
   const panelRef = useRef(null);
@@ -639,7 +643,10 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         });
 
         socket.on('title-init', (value) => setTitle(value));
-        socket.on('title-update', (value) => setTitle(value));
+        socket.on('title-update', (value) => {
+          setTitle(value);
+          docsState.updateDocumentTitle(initialDoc.documentId, value, { immediate: false, persist: false });
+        });
 
         socket.on('version-created', (version) => {
           setEventsFeed((feed) => [`${version.createdBy?.name || 'System'} saved a version`, ...feed].slice(0, 5));
@@ -764,6 +771,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const handleTitleChange = (event) => {
     const newTitle = event.target.value;
     setTitle(newTitle);
+    docsState.updateDocumentTitle(documentId, newTitle, { immediate: false, persist: true });
 
     if (!canEdit) {
       return;
@@ -1391,12 +1399,50 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       ) : null}
 
       <EditorLayout
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         sidebar={(
-          <OutlineSidebar
-            title={title}
-            headings={outlineHeadings}
-            activeHeadingId={activeHeadingId}
-            onJumpToHeading={handleJumpToHeading}
+          <DocumentsSidebar
+            documents={docsState.documents}
+            activeDocumentId={documentId}
+            onToggle={() => setIsSidebarOpen(false)}
+            onCreateDocument={async () => {
+              const newDoc = await docsState.createDocument();
+              if (newDoc && newDoc.documentId) {
+                navigateToPath(`/doc/${newDoc.documentId}`);
+              }
+            }}
+            onDeleteDocument={async (id) => {
+              await docsState.deleteDocument(id);
+              if (id === documentId) {
+                const docIdMatch = (d) => (d.documentId || d._id || d.id);
+                const remaining = docsState.documents.filter((d) => docIdMatch(d) !== id);
+                
+                if (remaining.length > 0) {
+                  navigateToPath(`/doc/${docIdMatch(remaining[0])}`);
+                } else {
+                  const newDoc = await docsState.createDocument();
+                  if (newDoc) {
+                    navigateToPath(`/doc/${docIdMatch(newDoc)}`);
+                  }
+                }
+              }
+            }}
+            onNavigate={(id) => {
+              if (window.innerWidth <= 900) {
+                setIsSidebarOpen(false);
+              }
+              navigateToPath(`/doc/${id}`);
+            }}
+            onRenameDocument={async (id, newTitle) => {
+              await docsState.renameDocument(id, newTitle);
+              if (id === documentId) {
+                setTitle(newTitle);
+                if (canEdit && socket.connected) {
+                  socket.emit('title-update', newTitle);
+                }
+              }
+            }}
           />
         )}
       >
