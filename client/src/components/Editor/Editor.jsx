@@ -270,7 +270,6 @@ const EditorComponent = ({
       });
     },
     onCreate: ({ editor: instance }) => {
-      onEditorReady(instance);
       onContentChange?.(instance.getText());
       onOutlineChange?.(extractOutline(instance));
     },
@@ -289,11 +288,18 @@ const EditorComponent = ({
     editor.setEditable(canEdit);
   }, [canEdit, editor]);
 
-  useEffect(() => () => {
+  useEffect(() => {
     if (editor) {
-      onEditorReady(null);
+      onEditorReady(editor);
     }
-  }, [editor, onEditorReady]);
+    
+    return () => {
+      if (editor) {
+        onEditorReady(null);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   return (
     <div className="editor-container" style={{ '--editor-scale': `${(zoomLevel || 100) / 100}` }}>

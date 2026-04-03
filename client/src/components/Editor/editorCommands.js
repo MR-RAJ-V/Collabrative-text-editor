@@ -43,20 +43,21 @@ export const formatActions = {
   italic: (editor) => editor.chain().focus().toggleItalic().run(),
   underline: (editor) => editor.chain().focus().toggleUnderline().run(),
   strike: (editor) => editor.chain().focus().toggleStrike().run(),
+  heading: (editor, level) => editor.chain().focus().toggleHeading({ level }).run(),
   setBlockType: (editor, value) => {
     if (value === 'paragraph') {
       return editor.chain().focus().setParagraph().run();
     }
 
-    return editor.chain().focus().toggleHeading({ level: Number(value.replace('h', '')) }).run();
+    return formatActions.heading(editor, Number(value.replace('h', '')));
   },
   setFontFamily: (editor, value) => editor.chain().focus().setFontFamily(value).run(),
-  setFontSize: (editor, value) => editor.chain().focus().setMark('textStyle', { fontSize: value }).run(),
+  setFontSize: (editor, value) => editor.chain().focus().setFontSize(value).run(),
   increaseFontSize: (editor, currentValue) => (
-    editor.chain().focus().setMark('textStyle', { fontSize: getNextFontSize(currentValue, 1) }).run()
+    editor.chain().focus().setFontSize(getNextFontSize(currentValue, 1)).run()
   ),
   decreaseFontSize: (editor, currentValue) => (
-    editor.chain().focus().setMark('textStyle', { fontSize: getNextFontSize(currentValue, -1) }).run()
+    editor.chain().focus().setFontSize(getNextFontSize(currentValue, -1)).run()
   ),
   align: (editor, value) => editor.chain().focus().setTextAlign(value).run(),
   bulletList: (editor) => editor.chain().focus().toggleBulletList().run(),
@@ -67,4 +68,3 @@ export const formatActions = {
   highlightColor: (editor, value) => editor.chain().focus().setHighlightColor(value).run(),
   clearFormatting: (editor) => editor.chain().focus().clearNodes().unsetAllMarks().run(),
 };
-

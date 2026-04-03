@@ -42,6 +42,18 @@ const REDIRECT_AFTER_LOGIN_KEY = 'redirectAfterLogin';
 const DEFAULT_TEXT_COLOR = '#0f172a';
 const DEFAULT_HIGHLIGHT_COLOR = '#fef08a';
 
+const areEditorUiSnapshotsEqual = (current, next) => {
+  if (current === next) {
+    return true;
+  }
+
+  if (!current || !next) {
+    return false;
+  }
+
+  return Object.keys(next).every((key) => current[key] === next[key]);
+};
+
 const getEditorUiSnapshot = (editor, selection = { from: 0, to: 0 }) => {
   if (!editor) {
     return null;
@@ -1006,18 +1018,19 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       return undefined;
     }
 
+    let frameId = null;
+
     const syncEditorUiState = () => {
-      const nextState = getEditorUiSnapshot(toolbarEditor, selection);
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
 
-      setEditorUiState((current) => {
-        const currentSnapshot = current ? JSON.stringify(current) : '';
-        const nextSnapshot = JSON.stringify(nextState);
+      // Batch rapid selection and transaction updates into the next paint.
+      frameId = window.requestAnimationFrame(() => {
+        const nextState = getEditorUiSnapshot(toolbarEditor, selection);
 
-        if (currentSnapshot === nextSnapshot) {
-          return current;
-        }
-
-        return nextState;
+        setEditorUiState((current) => (areEditorUiSnapshotsEqual(current, nextState) ? current : nextState));
+        frameId = null;
       });
     };
 
@@ -1027,6 +1040,10 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     toolbarEditor.on('update', syncEditorUiState);
 
     return () => {
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+
       toolbarEditor.off('selectionUpdate', syncEditorUiState);
       toolbarEditor.off('transaction', syncEditorUiState);
       toolbarEditor.off('update', syncEditorUiState);
@@ -1139,6 +1156,9 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           { label: 'Heading 2', onSelect: () => formattingActions.setBlockType('h2'), disabled: !canEdit, active: formatState?.blockType === 'h2' },
           { label: 'Heading 3', onSelect: () => formattingActions.setBlockType('h3'), disabled: !canEdit, active: formatState?.blockType === 'h3' },
           { type: 'separator' },
+          { label: 'Increase Font Size', onSelect: formattingActions.increaseFontSize, disabled: !canEdit },
+          { label: 'Decrease Font Size', onSelect: formattingActions.decreaseFontSize, disabled: !canEdit },
+          { type: 'separator' },
           { label: 'Bold', onSelect: formattingActions.toggleBold, disabled: !canEdit, active: formatState?.isBold },
           { label: 'Italic', onSelect: formattingActions.toggleItalic, disabled: !canEdit, active: formatState?.isItalic },
           { label: 'Underline', onSelect: formattingActions.toggleUnderline, disabled: !canEdit, active: formatState?.isUnderline },
@@ -1189,6 +1209,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     toggleTheme,
     zoomLevel,
   ]);
+
 
   if (auth.loading || loading) {
     if (loadingTimedOut) {
