@@ -11,6 +11,7 @@ import {
 import { getCurrentUser, setAuthTokenProvider } from '../services/api';
 import { setSocketAuthToken } from '../services/socket';
 import { setVersionTokenProvider } from '../services/versionService';
+import { getErrorMessage } from '../utils/errorUtils';
 
 const toAppUser = (dbUser, firebaseUser) => ({
   userId: dbUser.firebaseUid,
@@ -82,7 +83,7 @@ export const useAuth = () => {
         } else if (error.code === 'ERR_NETWORK') {
           setAuthError('Signed in with Google, but the backend is unavailable. Start the server and try again.');
         } else {
-          setAuthError(error.message || 'Authentication failed');
+          setAuthError(getErrorMessage(error, 'Authentication failed'));
         }
 
         await signOutFromFirebase();
@@ -98,7 +99,7 @@ export const useAuth = () => {
         await resolveRedirectSignIn();
       } catch (error) {
         if (!cancelled) {
-          setAuthError(error.message || 'Authentication failed');
+          setAuthError(getErrorMessage(error, 'Authentication failed'));
         }
       } finally {
         if (!cancelled) {
@@ -141,7 +142,7 @@ export const useAuth = () => {
       try {
         await signInWithGoogle();
       } catch (error) {
-        setAuthError(error.message || 'Authentication failed');
+        setAuthError(getErrorMessage(error, 'Authentication failed'));
         setIsSigningIn(false);
       }
     },

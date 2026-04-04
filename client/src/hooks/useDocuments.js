@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createDocument, deleteDocument, listDocuments, updateDocument } from '../services/api';
 import { socket } from '../services/socket';
+import { getErrorMessage } from '../utils/errorUtils';
 
 export const useDocuments = (isAuthenticated) => {
   const [documents, setDocuments] = useState([]);
@@ -57,7 +58,7 @@ export const useDocuments = (isAuthenticated) => {
       setError('');
     } catch (e) {
       console.error('Failed to fetch documents', e);
-      setError(e.response?.data?.message || e.message || 'Failed to load your documents');
+      setError(getErrorMessage(e, 'Failed to load your documents'));
     } finally {
       setLoading(false);
     }

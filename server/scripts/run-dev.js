@@ -68,7 +68,7 @@ const stopExistingNodeServer = async () => {
   nodeLikePids.forEach((pid) => {
     try {
       process.kill(Number(pid), 'SIGTERM');
-      console.log(`Stopped existing Node process on port ${port} (PID ${pid}).`);
+      console.info(`Stopped existing Node process on port ${port} (PID ${pid}).`);
     } catch (error) {
       if (error.code !== 'ESRCH') {
         throw error;

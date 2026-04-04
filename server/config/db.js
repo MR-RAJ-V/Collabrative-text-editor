@@ -5,7 +5,7 @@ const connectDB = async () => {
 
   try {
     const conn = await mongoose.connect(mongoUri);
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.info(`MongoDB Connected: ${conn.connection.host}`);
     return conn;
   } catch (error) {
     const hasMultipleAtSigns = (mongoUri.match(/@/g) || []).length > 1;

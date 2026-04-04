@@ -1,16 +1,15 @@
 const crypto = require('crypto');
 const Document = require('../models/Document');
-const User = require('../models/User');
 const Version = require('../models/Version');
 const { docs, getIO, roomUsers } = require('../sockets/runtime');
 const { ensureBuffer, extractTextFromState } = require('../utils/yjsHelpers');
+const { sendError } = require('../utils/http');
 const {
   canCommentFromAccess,
   canEditFromAccess,
   canManageFromAccess,
   findDocumentOrThrow,
   populateDocumentAccess,
-  serializePermissions,
 } = require('../services/documentAccess');
 
 const clearLiveDocumentState = (documentId) => {
@@ -100,7 +99,7 @@ const createDocument = async (req, res) => {
       },
     }));
   } catch (error) {
-    return res.status(500).json({ message: 'Error creating document', error: error.message });
+    return sendError(res, error, 'Error creating document');
   }
 };
 
@@ -111,7 +110,7 @@ const getDocument = async (req, res) => {
 
     return res.json(serializeDocument(document, access));
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error fetching document' });
+    return sendError(res, error, 'Error fetching document');
   }
 };
 
@@ -147,7 +146,7 @@ const updateDocument = async (req, res) => {
     await document.save();
     return res.json(serializeDocument(document, access));
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error updating document' });
+    return sendError(res, error, 'Error updating document');
   }
 };
 
@@ -170,7 +169,7 @@ const deleteDocument = async (req, res) => {
 
     return res.json({ deleted: true });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error deleting document' });
+    return sendError(res, error, 'Error deleting document');
   }
 };
 
@@ -201,7 +200,7 @@ const addComment = async (req, res) => {
 
     return res.status(201).json(document.comments[document.comments.length - 1]);
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error adding comment' });
+    return sendError(res, error, 'Error adding comment');
   }
 };
 
@@ -241,7 +240,7 @@ const updateComment = async (req, res) => {
     await document.save();
     return res.json(comment);
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error updating comment' });
+    return sendError(res, error, 'Error updating comment');
   }
 };
 
@@ -274,7 +273,7 @@ const addSuggestion = async (req, res) => {
 
     return res.status(201).json(document.suggestions[document.suggestions.length - 1]);
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error adding suggestion' });
+    return sendError(res, error, 'Error adding suggestion');
   }
 };
 
@@ -302,7 +301,7 @@ const updateSuggestion = async (req, res) => {
     await document.save();
     return res.json(suggestion);
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error updating suggestion' });
+    return sendError(res, error, 'Error updating suggestion');
   }
 };
 
@@ -397,7 +396,7 @@ const shareDocument = async (req, res) => {
     const refreshed = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
     return res.json(serializePermissions(refreshed));
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error sharing document' });
+    return sendError(res, error, 'Error sharing document');
   }
 };
 
@@ -430,7 +429,7 @@ const listDocuments = async (req, res) => {
       updatedAt: document.updatedAt,
     })));
   } catch (error) {
-    return res.status(500).json({ message: 'Error fetching documents', error: error.message });
+    return sendError(res, error, 'Error fetching documents');
   }
 };
 
@@ -444,7 +443,7 @@ const getPermissions = async (req, res) => {
       access,
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error fetching permissions' });
+    return sendError(res, error, 'Error fetching permissions');
   }
 };
 
@@ -477,7 +476,7 @@ const updatePermissions = async (req, res) => {
     await document.save();
     return res.json(serializePermissions(document));
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error updating permissions' });
+    return sendError(res, error, 'Error updating permissions');
   }
 };
 

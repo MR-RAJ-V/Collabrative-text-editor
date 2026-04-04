@@ -1,4 +1,3 @@
-const Document = require('../models/Document');
 const Version = require('../models/Version');
 const {
   buildVersionMetadata,
@@ -6,6 +5,7 @@ const {
   restoreVersionSnapshot,
 } = require('../services/versionService');
 const { normalizeUser } = require('../utils/yjsHelpers');
+const { sendError } = require('../utils/http');
 const {
   canEditFromAccess,
   findDocumentOrThrow,
@@ -23,7 +23,7 @@ const listVersions = async (req, res) => {
 
     return res.json(versions.map(buildVersionMetadata));
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error fetching versions' });
+    return sendError(res, error, 'Error fetching versions');
   }
 };
 
@@ -46,7 +46,7 @@ const getVersion = async (req, res) => {
       yjsState: version.yjsState.toString('base64'),
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error fetching version' });
+    return sendError(res, error, 'Error fetching version');
   }
 };
 
@@ -81,7 +81,7 @@ const createVersion = async (req, res) => {
       version: buildVersionMetadata(result.version),
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: error.message || 'Error creating version' });
+    return sendError(res, error, 'Error creating version');
   }
 };
 
@@ -106,8 +106,7 @@ const restoreVersion = async (req, res) => {
       restoredVersion: payload.restoredVersion,
     });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    return res.status(statusCode).json({ message: error.message || 'Error restoring version' });
+    return sendError(res, error, 'Error restoring version');
   }
 };
 

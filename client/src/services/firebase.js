@@ -9,34 +9,9 @@ import {
   signInWithRedirect,
   signOut,
 } from 'firebase/auth';
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-const maskValue = (value) => {
-  if (!value) {
-    return 'missing';
-  }
-
-  if (value.length <= 8) {
-    return `${value.slice(0, 2)}***`;
-  }
-
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
-};
+import { firebaseAuthFlow, firebaseConfig } from '../config/appConfig';
 
 const hasMissingFirebaseConfig = Object.values(firebaseConfig).some((value) => !value);
-
-console.info('[firebase] env check', {
-  apiKey: maskValue(firebaseConfig.apiKey),
-  authDomain: firebaseConfig.authDomain || 'missing',
-  projectId: firebaseConfig.projectId || 'missing',
-  appId: maskValue(firebaseConfig.appId),
-});
 
 let app = null;
 let auth = null;
@@ -48,7 +23,7 @@ const shouldUseRedirectSignIn = () => {
     return false;
   }
 
-  const configuredMode = import.meta.env.VITE_FIREBASE_AUTH_FLOW;
+  const configuredMode = firebaseAuthFlow;
   if (configuredMode === 'redirect') {
     return true;
   }

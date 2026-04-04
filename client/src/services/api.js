@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { apiBaseUrl } from '../config/appConfig';
 
 let tokenProvider = async () => null;
 
@@ -7,7 +8,7 @@ export const setAuthTokenProvider = (provider) => {
 };
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: apiBaseUrl,
 });
 
 api.interceptors.request.use(async (config) => {

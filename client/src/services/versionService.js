@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { apiBaseUrl } from '../config/appConfig';
 import { normalizeBinaryPayload } from '../utils/versionUtils';
 
 let tokenProvider = async () => null;
@@ -8,7 +9,7 @@ export const setVersionTokenProvider = (provider) => {
 };
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: apiBaseUrl,
 });
 
 api.interceptors.request.use(async (config) => {
@@ -49,8 +50,7 @@ export const captureVersionOnUnload = (documentId, payload) => {
   }
 
   const token = payload?.token;
-  const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const url = `${baseURL}/documents/${documentId}/versions`;
+  const url = `${apiBaseUrl}/documents/${documentId}/versions`;
 
   window.fetch(url, {
     method: 'POST',

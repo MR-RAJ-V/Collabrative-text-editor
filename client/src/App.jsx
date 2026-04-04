@@ -38,6 +38,7 @@ import {
   TEXT_STYLE_OPTIONS,
   formatActions,
 } from './components/Editor/editorCommands';
+import { getErrorMessage } from './utils/errorUtils';
 import { extractComparableTextFromDoc } from './utils/versionUtils';
 import './App.css';
 
@@ -359,7 +360,7 @@ const LoginRoute = ({ auth, onCreateAndOpenDocument }) => {
         }
       } catch (error) {
         if (!cancelled) {
-          setStartupError(error.response?.data?.message || error.message || 'Failed to initialize workspace');
+          setStartupError(getErrorMessage(error, 'Failed to initialize workspace'));
         }
       }
     };
@@ -402,7 +403,7 @@ const DocumentsRoute = ({ auth, onCreateAndOpenDocument }) => {
         }
       } catch (loadError) {
         if (mounted) {
-          setError(loadError.response?.data?.message || loadError.message || 'Failed to load your documents');
+          setError(getErrorMessage(loadError, 'Failed to load your documents'));
         }
       } finally {
         if (mounted) {
@@ -692,7 +693,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     trackedSaveChangeCounterRef.current = 0;
     saveInFlightRef.current = false;
     setIsDirty(false);
-  }, [clearTypingTimeouts, routeDocumentId]);
+  }, [clearAutoSaveTimer, clearTypingTimeouts, routeDocumentId]);
 
   useEffect(() => {
     setLoadingTimedOut(false);
@@ -852,15 +853,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
             return;
           }
 
-          if (import.meta.env.DEV) {
-            console.log('Incoming typing:', {
-              from: eventUserName,
-              current: currentUserName,
-              session: eventSessionId,
-              currentSession: currentSessionId,
-            });
-          }
-
           if (eventUserId === currentUserId || (eventSessionId && currentSessionId && eventSessionId === currentSessionId)) {
             return;
           }
@@ -1016,7 +1008,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         }
 
         const statusCode = error.response?.status;
-        const message = error.response?.data?.message || error.message || 'Failed to load document';
+        const message = getErrorMessage(error, 'Failed to load document');
 
         if (!auth.isAuthenticated && (statusCode === 401 || statusCode === 403)) {
           saveRedirectAfterLogin(pathname);
@@ -1126,7 +1118,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       await restoreVersion(documentId, versionId, { createdBy: actor });
       handleExitVersionPreview();
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to restore version');
+      alert(getErrorMessage(error, 'Failed to restore version'));
     } finally {
       setRestorePendingVersionId(null);
     }
