@@ -1578,9 +1578,9 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           { label: 'Undo', shortcut: 'Ctrl+Z', onSelect: formattingActions.undo, disabled: !editorCanEdit || !formatState?.canUndo },
           { label: 'Redo', shortcut: 'Ctrl+Y', onSelect: formattingActions.redo, disabled: !editorCanEdit || !formatState?.canRedo },
           { type: 'separator' },
-          { label: 'Cut', shortcut: 'Ctrl+X', onSelect: () => handleClipboardCut().catch(() => {}), disabled: !editorCanEdit || !hasSelection },
-          { label: 'Copy', shortcut: 'Ctrl+C', onSelect: () => handleClipboardCopy().catch(() => {}) },
-          { label: 'Paste', shortcut: 'Ctrl+V', onSelect: () => handleClipboardPaste().catch(() => {}), disabled: !editorCanEdit },
+          { label: 'Cut', shortcut: 'Ctrl+X', onSelect: () => handleClipboardCut().catch(() => { }), disabled: !editorCanEdit || !hasSelection },
+          { label: 'Copy', shortcut: 'Ctrl+C', onSelect: () => handleClipboardCopy().catch(() => { }) },
+          { label: 'Paste', shortcut: 'Ctrl+V', onSelect: () => handleClipboardPaste().catch(() => { }), disabled: !editorCanEdit },
         ],
       },
       {
@@ -1878,7 +1878,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
               if (id === documentId) {
                 const docIdMatch = (d) => (d.documentId || d._id || d.id);
                 const remaining = docsState.documents.filter((d) => docIdMatch(d) !== id);
-                
+
                 if (remaining.length > 0) {
                   navigateToPath(`/doc/${docIdMatch(remaining[0])}`);
                 } else {
@@ -1897,8 +1897,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
             }}
             onRenameDocument={async (id, newTitle) => {
               await docsState.renameDocument(id, newTitle);
-                if (id === documentId) {
-                  setTitle(newTitle);
+              if (id === documentId) {
+                setTitle(newTitle);
                 if (editorCanEdit && socket.connected) {
                   socket.emit('title-update', newTitle);
                 }
