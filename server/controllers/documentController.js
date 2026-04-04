@@ -40,21 +40,6 @@ const serializeDocument = (document, access) => ({
     email: document.ownerId.email,
     avatar: document.ownerId.avatar,
   } : null,
-  collaborators: (document.collaborators || []).map((item) => ({
-    role: item.role,
-    user: item.userId ? {
-      id: item.userId._id,
-      name: item.userId.name,
-      email: item.userId.email,
-      avatar: item.userId.avatar,
-    } : null,
-  })),
-  sharedUsers: (document.sharedUsers || []).map((item) => ({
-    id: item._id,
-    name: item.name,
-    email: item.email,
-    avatar: item.avatar,
-  })),
   visibility: document.visibility === 'link-access' ? 'link' : document.visibility,
   linkRole: document.linkRole,
   access,
@@ -70,16 +55,11 @@ const createDocument = async (req, res) => {
       content: '',
       visibility: 'private',
       linkRole: 'viewer',
-      sharedUsers: [],
-      collaborators: [],
       comments: [],
       suggestions: [],
     });
 
-    const populated = await Document.findById(document._id)
-      .populate('ownerId')
-      .populate('sharedUsers')
-      .populate('collaborators.userId');
+    const populated = await Document.findById(document._id).populate('ownerId');
     return res.status(201).json(serializeDocument(populated, {
       allowed: true,
       role: 'owner',
@@ -105,7 +85,7 @@ const createDocument = async (req, res) => {
 
 const getDocument = async (req, res) => {
   try {
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     return res.json(serializeDocument(document, access));
@@ -117,7 +97,7 @@ const getDocument = async (req, res) => {
 const updateDocument = async (req, res) => {
   try {
     const { state, title, content } = req.body;
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canEditFromAccess(access)) {
@@ -152,7 +132,7 @@ const updateDocument = async (req, res) => {
 
 const deleteDocument = async (req, res) => {
   try {
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canManageFromAccess(access)) {
@@ -176,7 +156,7 @@ const deleteDocument = async (req, res) => {
 const addComment = async (req, res) => {
   try {
     const { message, textRange, selectedText } = req.body;
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canCommentFromAccess(access)) {
@@ -207,7 +187,7 @@ const addComment = async (req, res) => {
 const updateComment = async (req, res) => {
   try {
     const { action, reply, resolved } = req.body;
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canCommentFromAccess(access)) {
@@ -247,7 +227,7 @@ const updateComment = async (req, res) => {
 const addSuggestion = async (req, res) => {
   try {
     const { type, content, position } = req.body;
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canCommentFromAccess(access)) {
@@ -280,7 +260,7 @@ const addSuggestion = async (req, res) => {
 const updateSuggestion = async (req, res) => {
   try {
     const { status } = req.body;
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canEditFromAccess(access)) {
@@ -307,94 +287,33 @@ const updateSuggestion = async (req, res) => {
 
 const shareDocument = async (req, res) => {
   try {
-    const { email, role, visibility, sharedUsers } = req.body || {};
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
+    const { role, visibility } = req.body || {};
+    const document = await findDocumentOrThrow(req.params.id, 'ownerId');
     const access = await populateDocumentAccess({ document, authUser: req.user });
 
     if (!canManageFromAccess(access)) {
       return res.status(403).json({ message: 'Only the owner can share this document' });
     }
 
-    if (visibility && !['private', 'link', 'link-access'].includes(visibility)) {
+    if (visibility && !['private', 'public', 'link', 'link-access'].includes(visibility)) {
       return res.status(400).json({ message: 'Invalid visibility value' });
     }
 
-    const normalizedVisibility = visibility === 'link-access' ? 'link' : visibility;
+    if (role && !['viewer', 'editor'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role value' });
+    }
+
+    const normalizedVisibility = ['public', 'link', 'link-access'].includes(visibility) ? 'link' : visibility;
     if (normalizedVisibility) {
       document.visibility = normalizedVisibility;
     }
 
-    const nextSharedUsers = [];
-    if (Array.isArray(sharedUsers)) {
-      for (const entry of sharedUsers) {
-        const rawUserId = typeof entry === 'string' ? entry : entry?.userId;
-        if (!rawUserId) {
-          continue;
-        }
-
-        const sharedUser = await User.findById(rawUserId);
-        if (!sharedUser) {
-          continue;
-        }
-
-        if (String(sharedUser._id) === String(document.ownerId._id || document.ownerId)) {
-          continue;
-        }
-
-        nextSharedUsers.push(String(sharedUser._id));
-
-        const existing = document.collaborators.find(
-          (item) => String(item.userId._id || item.userId) === String(sharedUser._id),
-        );
-        const sharedRole = ['editor', 'commenter', 'viewer'].includes(entry?.role) ? entry.role : 'viewer';
-
-        if (existing) {
-          existing.role = sharedRole;
-        } else {
-          document.collaborators.push({ userId: sharedUser._id, role: sharedRole });
-        }
-      }
-    }
-
-    if (email) {
-      if (!['editor', 'commenter', 'viewer'].includes(role)) {
-        return res.status(400).json({ message: 'A valid role is required when sharing by email' });
-      }
-
-      const collaboratorUser = await User.findOne({ email: email.toLowerCase().trim() });
-      if (!collaboratorUser) {
-        return res.status(404).json({ message: 'No registered user found with that email address' });
-      }
-
-      if (String(collaboratorUser._id) === String(document.ownerId._id || document.ownerId)) {
-        return res.status(400).json({ message: 'The owner already has full access' });
-      }
-
-      nextSharedUsers.push(String(collaboratorUser._id));
-
-      const existing = document.collaborators.find(
-        (item) => String(item.userId._id || item.userId) === String(collaboratorUser._id),
-      );
-
-      if (existing) {
-        existing.role = role;
-      } else {
-        document.collaborators.push({ userId: collaboratorUser._id, role });
-      }
-    }
-
-    if (Array.isArray(sharedUsers) || email) {
-      const uniqueIds = [...new Set(nextSharedUsers)];
-      document.sharedUsers = uniqueIds;
-      document.collaborators = (document.collaborators || []).filter((item) => {
-        const userId = String(item.userId._id || item.userId);
-        return uniqueIds.includes(userId);
-      });
+    if (role) {
+      document.linkRole = role;
     }
 
     await document.save();
-    const refreshed = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
-    return res.json(serializePermissions(refreshed));
+    return res.json({ success: true });
   } catch (error) {
     return sendError(res, error, 'Error sharing document');
   }
@@ -404,14 +323,9 @@ const listDocuments = async (req, res) => {
   try {
     const dbUserId = req.user.dbUser._id;
     const documents = await Document.find({
-      $or: [
-        { ownerId: dbUserId },
-        { sharedUsers: dbUserId },
-        { 'collaborators.userId': dbUserId },
-      ],
+      ownerId: dbUserId,
     })
       .populate('ownerId')
-      .populate('sharedUsers')
       .sort({ updatedAt: -1 });
 
     return res.json(documents.map((document) => ({
@@ -433,53 +347,6 @@ const listDocuments = async (req, res) => {
   }
 };
 
-const getPermissions = async (req, res) => {
-  try {
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
-    const access = await populateDocumentAccess({ document, authUser: req.user });
-
-    return res.json({
-      ...serializePermissions(document),
-      access,
-    });
-  } catch (error) {
-    return sendError(res, error, 'Error fetching permissions');
-  }
-};
-
-const updatePermissions = async (req, res) => {
-  try {
-    const { visibility, linkRole } = req.body || {};
-    const document = await findDocumentOrThrow(req.params.id, 'ownerId sharedUsers collaborators.userId');
-    const access = await populateDocumentAccess({ document, authUser: req.user });
-
-    if (!canManageFromAccess(access)) {
-      return res.status(403).json({ message: 'Only the owner can update permissions' });
-    }
-
-    if (visibility && !['private', 'link', 'link-access'].includes(visibility)) {
-      return res.status(400).json({ message: 'Invalid visibility value' });
-    }
-
-    if (linkRole && !['viewer', 'commenter', 'editor'].includes(linkRole)) {
-      return res.status(400).json({ message: 'Invalid link role value' });
-    }
-
-    if (visibility) {
-      document.visibility = visibility === 'link-access' ? 'link' : visibility;
-    }
-
-    if (linkRole) {
-      document.linkRole = linkRole;
-    }
-
-    await document.save();
-    return res.json(serializePermissions(document));
-  } catch (error) {
-    return sendError(res, error, 'Error updating permissions');
-  }
-};
-
 module.exports = {
   addComment,
   addSuggestion,
@@ -487,10 +354,8 @@ module.exports = {
   deleteDocument,
   getDocument,
   listDocuments,
-  getPermissions,
   shareDocument,
   updateComment,
   updateDocument,
-  updatePermissions,
   updateSuggestion,
 };

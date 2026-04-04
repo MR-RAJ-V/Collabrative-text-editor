@@ -1,18 +1,5 @@
 const mongoose = require('mongoose');
 
-const collaboratorSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  },
-  role: {
-    type: String,
-    enum: ['editor', 'commenter', 'viewer'],
-    default: 'viewer',
-  },
-}, { _id: true });
-
 const commentReplySchema = new mongoose.Schema({
   user: { type: String, required: true },
   color: { type: String, default: '#64748b' },
@@ -91,14 +78,9 @@ const documentSchema = new mongoose.Schema({
   },
   linkRole: {
     type: String,
-    enum: ['viewer', 'commenter', 'editor'],
+    enum: ['viewer', 'editor'],
     default: 'viewer',
   },
-  sharedUsers: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-  }],
-  collaborators: [collaboratorSchema],
   comments: [commentSchema],
   suggestions: [suggestionSchema]
 }, { timestamps: true });

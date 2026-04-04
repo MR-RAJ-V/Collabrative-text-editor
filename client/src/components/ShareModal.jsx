@@ -1,36 +1,86 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import './SidebarPanels.css';
 import './ShareModal.css';
 
 const ShareModal = ({
   permissions,
   shareableLink,
   onClose,
-  onShare,
   onUpdateLinkSettings,
 }) => {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('viewer');
-  const [pending, setPending] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const currentVisibility = permissions?.visibility || 'private';
+  const currentLinkRole = permissions?.linkRole || 'viewer';
+  const [settingsPending, setSettingsPending] = useState(false);
+  const [copyPending, setCopyPending] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [linkVisibility, setLinkVisibility] = useState(currentVisibility);
+  const [linkRole, setLinkRole] = useState(currentLinkRole);
 
-  const handleShare = async () => {
-    if (!email.trim()) {
-      return;
+  useEffect(() => {
+    setLinkVisibility(currentVisibility);
+  }, [currentVisibility]);
+
+  useEffect(() => {
+    setLinkRole(currentLinkRole);
+  }, [currentLinkRole]);
+
+  const handleUpdateLinkSettings = async (changes) => {
+    const nextVisibility = changes.visibility ?? linkVisibility;
+    const nextLinkRole = changes.linkRole ?? linkRole;
+
+    if (changes.visibility !== undefined) {
+      setLinkVisibility(changes.visibility);
     }
 
-    setPending(true);
+    if (changes.linkRole !== undefined) {
+      setLinkRole(changes.linkRole);
+    }
+
+    setSettingsPending(true);
+    setSettingsError('');
+    setFeedbackMessage('');
+
     try {
-      await onShare({ email: email.trim(), role });
-      setEmail('');
+      await onUpdateLinkSettings({
+        visibility: nextVisibility,
+        linkRole: nextLinkRole,
+      });
+      setFeedbackMessage('Sharing settings updated.');
+    } catch (error) {
+      setLinkVisibility(currentVisibility);
+      setLinkRole(currentLinkRole);
+      setSettingsError(error?.response?.data?.message || error?.message || 'Failed to update link access');
     } finally {
-      setPending(false);
+      setSettingsPending(false);
     }
   };
 
   const handleCopy = async () => {
-    await navigator.clipboard?.writeText(shareableLink);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    setCopyPending(true);
+    setSettingsError('');
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareableLink);
+      } else {
+        const helperInput = document.createElement('textarea');
+        helperInput.value = shareableLink;
+        helperInput.setAttribute('readonly', '');
+        helperInput.style.position = 'absolute';
+        helperInput.style.left = '-9999px';
+        document.body.appendChild(helperInput);
+        helperInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(helperInput);
+      }
+
+      setFeedbackMessage('Link copied to clipboard.');
+    } catch (error) {
+      setSettingsError(error?.message || 'Failed to copy link');
+    } finally {
+      setCopyPending(false);
+    }
   };
 
   return (
@@ -41,66 +91,34 @@ const ShareModal = ({
       </div>
       <div className="sidebar-content">
         <div className="panel-card">
-          <p className="panel-label">Invite by email</p>
-          <input
-            className="panel-input"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="collaborator@example.com"
-          />
-          <select className="panel-input" value={role} onChange={(event) => setRole(event.target.value)}>
-            <option value="viewer">Viewer</option>
-            <option value="commenter">Commenter</option>
-            <option value="editor">Editor</option>
-          </select>
-          <button className="panel-primary" disabled={pending} onClick={handleShare}>
-            {pending ? 'Sharing...' : 'Share'}
-          </button>
-        </div>
-
-        <div className="panel-card">
           <p className="panel-label">Link access</p>
+          <p className="panel-subtle">Share this document using a link only. Set who can open it, then copy the URL.</p>
           <select
             className="panel-input"
-            value={permissions?.visibility || 'private'}
-            onChange={(event) => onUpdateLinkSettings({ visibility: event.target.value })}
+            value={linkVisibility}
+            disabled={settingsPending}
+            onChange={(event) => handleUpdateLinkSettings({ visibility: event.target.value })}
           >
             <option value="private">Private</option>
-            <option value="link">Anyone with link</option>
+            <option value="public">Public</option>
           </select>
           <select
             className="panel-input"
-            value={permissions?.linkRole || 'viewer'}
-            onChange={(event) => onUpdateLinkSettings({ linkRole: event.target.value })}
+            value={linkRole}
+            disabled={settingsPending}
+            onChange={(event) => handleUpdateLinkSettings({ linkRole: event.target.value })}
           >
             <option value="viewer">Viewer</option>
-            <option value="commenter">Commenter</option>
             <option value="editor">Editor</option>
           </select>
           <div className="share-link-row">
             <input className="panel-input" readOnly value={shareableLink} />
-            <button className="panel-secondary" onClick={handleCopy}>
-              {copied ? 'Copied' : 'Copy Link'}
+            <button className="panel-secondary" disabled={copyPending} onClick={handleCopy}>
+              {copyPending ? 'Copying...' : 'Copy Link'}
             </button>
           </div>
-        </div>
-
-        <div className="panel-card">
-          <p className="panel-label">People with access</p>
-          <div className="share-list">
-            <div className="share-person">
-              <strong>{permissions?.owner?.name || 'Owner'}</strong>
-              <span>{permissions?.owner?.email}</span>
-              <span className="pill pill-active">Owner</span>
-            </div>
-            {(permissions?.collaborators || []).map((item) => (
-              <div key={`${item.user?.id}-${item.role}`} className="share-person">
-                <strong>{item.user?.name}</strong>
-                <span>{item.user?.email}</span>
-                <span className="pill pill-muted">{item.role}</span>
-              </div>
-            ))}
-          </div>
+          {feedbackMessage ? <p className="share-feedback share-feedback-success">{feedbackMessage}</p> : null}
+          {settingsError ? <p className="share-feedback">{settingsError}</p> : null}
         </div>
       </div>
     </aside>

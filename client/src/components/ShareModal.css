@@ -12,28 +12,23 @@
   overflow: hidden;
 }
 
-.share-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.share-person {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--panel-bg);
-  border: 1px solid var(--border-color);
-}
-
-.share-person strong,
-.share-person span {
-  color: var(--text-color);
-}
-
 .share-link-row {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.share-link-row .panel-input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.share-feedback {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.share-feedback-success {
+  color: #15803d;
 }

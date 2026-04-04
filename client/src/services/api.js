@@ -74,13 +74,3 @@ export const shareDocument = async (id, payload) => {
   const response = await api.patch(`/documents/${id}/share`, payload);
   return response.data;
 };
-
-export const getPermissions = async (id) => {
-  const response = await api.get(`/documents/${id}/permissions`);
-  return response.data;
-};
-
-export const updatePermissions = async (id, payload) => {
-  const response = await api.put(`/documents/${id}/permissions`, payload);
-  return response.data;
-};

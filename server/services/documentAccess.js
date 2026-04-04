@@ -71,20 +71,6 @@ const resolveDocumentAccess = async ({ document, authUser }) => {
     return createAccessDescriptor({ document, dbUser, role: OWNER_ROLE });
   }
 
-  const collaborator = (document.collaborators || []).find(
-    (item) => String(item.userId?._id || item.userId) === dbUserId,
-  );
-  if (collaborator) {
-    return createAccessDescriptor({ document, dbUser, role: collaborator.role });
-  }
-
-  const isExplicitlyShared = (document.sharedUsers || []).some(
-    (userId) => String(userId?._id || userId) === dbUserId,
-  );
-  if (isExplicitlyShared) {
-    return createAccessDescriptor({ document, dbUser, role: VIEWER_ROLE });
-  }
-
   if (document.visibility === 'link' || document.visibility === 'link-access') {
     return createAccessDescriptor({ document, dbUser, role: document.linkRole || VIEWER_ROLE });
   }
@@ -120,17 +106,6 @@ const findDocumentOrThrow = async (documentId, populate = '') => {
   return document;
 };
 
-const serializePermissions = (document) => ({
-  owner: buildUserSummary(document.ownerId),
-  collaborators: (document.collaborators || []).map((item) => ({
-    role: item.role,
-    user: buildUserSummary(item.userId),
-  })),
-  sharedUsers: (document.sharedUsers || []).map((item) => buildUserSummary(item)),
-  visibility: document.visibility === 'link-access' ? 'link' : document.visibility,
-  linkRole: document.linkRole,
-});
-
 module.exports = {
   COMMENTER_ROLE,
   EDITOR_ROLE,
@@ -143,5 +118,4 @@ module.exports = {
   findDocumentOrThrow,
   populateDocumentAccess,
   resolveDocumentAccess,
-  serializePermissions,
 };

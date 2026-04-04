@@ -20,7 +20,6 @@ import {
   listDocuments,
   shareDocument,
   updateComment,
-  updatePermissions,
 } from './services/api';
 import { socket } from './services/socket';
 import {
@@ -217,11 +216,8 @@ const getRoute = (pathname) => {
 };
 
 const buildPermissionsFromDocument = (document) => ({
-  owner: document.owner,
-  collaborators: document.collaborators || [],
-  sharedUsers: document.sharedUsers || [],
-  visibility: document.visibility || 'private',
-  linkRole: document.linkRole || 'viewer',
+  visibility: document.visibility === 'link' ? 'public' : 'private',
+  linkRole: document.linkRole === 'editor' ? 'editor' : 'viewer',
 });
 
 const guestUser = {
@@ -1416,14 +1412,16 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     });
   };
 
-  const handleShare = async (payload) => {
-    const nextPermissions = await shareDocument(documentId, payload);
-    setPermissions(nextPermissions);
-  };
-
   const handleUpdateLinkSettings = async (payload) => {
-    const nextPermissions = await updatePermissions(documentId, payload);
-    setPermissions(nextPermissions);
+    await shareDocument(documentId, {
+      visibility: payload.visibility,
+      role: payload.linkRole,
+    });
+    setPermissions((current) => ({
+      ...(current || {}),
+      visibility: payload.visibility,
+      linkRole: payload.linkRole,
+    }));
   };
 
   const closeDialog = useCallback(() => {
@@ -1831,7 +1829,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           permissions={permissions}
           shareableLink={shareableLink}
           onClose={() => setShowShare(false)}
-          onShare={handleShare}
           onUpdateLinkSettings={handleUpdateLinkSettings}
         />
       ) : null}

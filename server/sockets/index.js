@@ -237,7 +237,7 @@ const setupSocket = (server, options = {}) => {
     socket.on('join-document', async (data) => {
       try {
         const documentId = typeof data === 'string' ? data : data.documentId;
-        const document = await Document.findOne({ documentId }).populate('ownerId').populate('collaborators.userId');
+        const document = await Document.findOne({ documentId }).populate('ownerId');
         if (!document) {
           socket.emit('access-denied', { message: 'Document not found' });
           return;

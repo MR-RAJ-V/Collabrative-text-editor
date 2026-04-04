@@ -13,8 +13,6 @@ const {
   addSuggestion,
   updateSuggestion,
   shareDocument,
-  getPermissions,
-  updatePermissions,
 } = require('../controllers/documentController');
 
 router.route('/')
@@ -28,7 +26,6 @@ router.put('/:id/comments/:commentId', verifyToken, updateComment);
 router.post('/:id/suggestions', verifyToken, addSuggestion);
 router.put('/:id/suggestions/:suggestionId', verifyToken, updateSuggestion);
 router.patch('/:id/share', verifyToken, shareDocument);
-router.route('/:id/permissions').get(verifyToken, getPermissions).put(verifyToken, updatePermissions);
 router.use('/:id/versions', versionRoutes);
 
 module.exports = router;
