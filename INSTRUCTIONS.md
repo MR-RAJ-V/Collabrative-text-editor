@@ -42,7 +42,7 @@ This document provides instructions on how to run locally and deploy the collabo
 6. Start Command: `node server.js`
 7. Environment Variables:
    - `PORT`: (leave empty or Render handles it, or set to your preference)
-   - `MONGO_URI`: `mongodb+srv://...` (your Atlas URI)
+   - `MONGO_URI`: `mongodb+srv://<username>:<password>@<cluster-host>/collaborative-editor?...` (your Atlas URI with an explicit database name)
 8. Deploy and get your server URL (e.g., `https://my-collab-server.onrender.com`).
 
 ### 3. Frontend (Vercel / Netlify)

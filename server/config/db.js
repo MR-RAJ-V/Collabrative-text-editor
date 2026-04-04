@@ -1,12 +1,19 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
+  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/collaborative-editor';
+
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/collaborative-editor');
+    const conn = await mongoose.connect(mongoUri);
     console.log(`MongoDB Connected: ${conn.connection.host}`);
+    return conn;
   } catch (error) {
-    console.error(`Error: ${error.message}`);
-    process.exit(1);
+    const hasMultipleAtSigns = (mongoUri.match(/@/g) || []).length > 1;
+    const hint = hasMultipleAtSigns
+      ? ' Hint: if your MongoDB password contains "@", encode it as "%40" in MONGO_URI.'
+      : '';
+
+    throw new Error(`MongoDB connection failed: ${error.message}.${hint}`);
   }
 };
 

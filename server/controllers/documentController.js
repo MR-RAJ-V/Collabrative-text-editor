@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const Document = require('../models/Document');
 const User = require('../models/User');
+const Version = require('../models/Version');
+const { docs, getIO, roomUsers } = require('../sockets/runtime');
 const { ensureBuffer, extractTextFromState } = require('../utils/yjsHelpers');
 const {
   canCommentFromAccess,
@@ -10,6 +12,19 @@ const {
   populateDocumentAccess,
   serializePermissions,
 } = require('../services/documentAccess');
+
+const clearLiveDocumentState = (documentId) => {
+  const liveDoc = docs.get(documentId);
+  if (liveDoc?.saveTimeout) {
+    clearTimeout(liveDoc.saveTimeout);
+  }
+  if (liveDoc?.snapshotTimeout) {
+    clearTimeout(liveDoc.snapshotTimeout);
+  }
+
+  docs.delete(documentId);
+  roomUsers.delete(documentId);
+};
 
 const serializeDocument = (document, access) => ({
   _id: document.documentId,
@@ -145,7 +160,14 @@ const deleteDocument = async (req, res) => {
       return res.status(403).json({ message: 'Only the owner can delete this document' });
     }
 
+    clearLiveDocumentState(document.documentId);
+    await Version.deleteMany({ documentId: document.documentId });
     await Document.deleteOne({ _id: document._id });
+    getIO()?.to(document.documentId).emit('document-deleted', {
+      documentId: document.documentId,
+      deletedAt: new Date().toISOString(),
+    });
+
     return res.json({ deleted: true });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: error.message || 'Error deleting document' });

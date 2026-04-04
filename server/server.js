@@ -37,13 +37,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Database connection
-connectDB();
-
-if (!hasFirebaseAdminConfig()) {
-  console.warn('Firebase Admin credentials are not fully configured. Authenticated routes will fail until FIREBASE service account credentials are provided.');
-}
-
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
@@ -69,6 +62,19 @@ server.on('error', (error) => {
   process.exit(1);
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const startServer = async () => {
+  await connectDB();
+
+  if (!hasFirebaseAdminConfig()) {
+    console.warn('Firebase Admin credentials are not fully configured. Authenticated routes will fail until FIREBASE service account credentials are provided.');
+  }
+
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
 });

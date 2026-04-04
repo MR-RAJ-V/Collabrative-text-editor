@@ -51,6 +51,21 @@ const serializePresenceUser = (user = {}) => ({
   lastActivityAt: user.lastActivityAt,
 });
 
+const emitTypingUpdate = (socket, documentId, isTyping) => {
+  if (!documentId) {
+    return;
+  }
+
+  socket.to(documentId).emit('typing-update', {
+    documentId,
+    userId: socket.user?.uid,
+    userName: socket.user?.name || 'Unknown user',
+    sessionId: socket.id,
+    isTyping: Boolean(isTyping),
+    timestamp: Date.now(),
+  });
+};
+
 const touchUser = (io, documentId, socketId, updates = {}) => {
   const users = roomUsers.get(documentId) || [];
   const target = users.find((user) => user.socketId === socketId);
@@ -85,18 +100,50 @@ const clearTimers = (docObj) => {
   }
 };
 
+const persistCurrentDocumentState = async (io, documentId, docObj) => {
+  if (!docObj?.ydoc) {
+    return null;
+  }
+
+  if (docObj.saveTimeout) {
+    clearTimeout(docObj.saveTimeout);
+    docObj.saveTimeout = null;
+  }
+
+  if (docObj.savePromise) {
+    return docObj.savePromise;
+  }
+
+  io.to(documentId).emit('save-status', { status: 'saving', at: new Date().toISOString() });
+
+  docObj.savePromise = persistDocumentState(documentId, Y.encodeStateAsUpdate(docObj.ydoc))
+    .then(() => {
+      io.to(documentId).emit('save-status', { status: 'saved', at: new Date().toISOString() });
+    })
+    .catch((error) => {
+      console.error(`Failed to persist document ${documentId}:`, error);
+      io.to(documentId).emit('save-status', { status: 'error', at: new Date().toISOString() });
+      throw error;
+    })
+    .finally(() => {
+      docObj.savePromise = null;
+    });
+
+  return docObj.savePromise;
+};
+
 const scheduleDocumentSave = (io, documentId, docObj) => {
   if (docObj.saveTimeout) {
     clearTimeout(docObj.saveTimeout);
   }
 
   docObj.saveTimeout = setTimeout(async () => {
+    docObj.saveTimeout = null;
+
     try {
-      await persistDocumentState(documentId, Y.encodeStateAsUpdate(docObj.ydoc));
-      io.to(documentId).emit('save-status', { status: 'saved', at: new Date().toISOString() });
+      await persistCurrentDocumentState(io, documentId, docObj);
     } catch (error) {
-      console.error(`Failed to persist document ${documentId}:`, error);
-      io.to(documentId).emit('save-status', { status: 'error', at: new Date().toISOString() });
+      // Error reporting is handled inside persistCurrentDocumentState.
     }
   }, SAVE_DELAY_MS);
 };
@@ -227,6 +274,7 @@ const setupSocket = (server, options = {}) => {
           docObj = {
             ydoc,
             saveTimeout: null,
+            savePromise: null,
             snapshotTimeout: null,
             pendingChangeScore: 0,
             lastSnapshotText: document.content || '',
@@ -278,7 +326,7 @@ const setupSocket = (server, options = {}) => {
         const afterText = extractTextFromYDoc(docObj.ydoc);
 
         socket.broadcast.to(socket.documentId).emit('yjs-update', update);
-        touchUser(io, socket.documentId, socket.id, { isTyping: true });
+        touchUser(io, socket.documentId, socket.id);
 
         docObj.lastChangedBy = normalizeUser(socket.user);
         docObj.pendingChangeScore = (docObj.pendingChangeScore || 0) + Math.max(1, Math.abs(afterText.length - beforeText.length));
@@ -288,6 +336,23 @@ const setupSocket = (server, options = {}) => {
         await maybeCreateSignificantSnapshot(socket.documentId, docObj);
       } catch (error) {
         console.error(`Error applying update to document ${socket.documentId}:`, error);
+      }
+    });
+
+    socket.on('manual-save', async () => {
+      if (!socket.documentId || !canEditFromAccess({ role: socket.accessRole })) {
+        return;
+      }
+
+      const docObj = docs.get(socket.documentId);
+      if (!docObj) {
+        return;
+      }
+
+      try {
+        await persistCurrentDocumentState(io, socket.documentId, docObj);
+      } catch (error) {
+        // Error reporting is handled inside persistCurrentDocumentState.
       }
     });
 
@@ -313,6 +378,7 @@ const setupSocket = (server, options = {}) => {
 
       target.isTyping = Boolean(isTyping);
       touchUser(io, socket.documentId, socket.id, { isTyping: Boolean(isTyping) });
+      emitTypingUpdate(socket, socket.documentId, isTyping);
 
       if (target.typingTimeout) {
         clearTimeout(target.typingTimeout);
@@ -322,6 +388,7 @@ const setupSocket = (server, options = {}) => {
         target.typingTimeout = setTimeout(() => {
           target.isTyping = false;
           emitRoomUsers(io, socket.documentId);
+          emitTypingUpdate(socket, socket.documentId, false);
         }, TYPING_TIMEOUT);
       }
     });
@@ -375,6 +442,9 @@ const setupSocket = (server, options = {}) => {
         }
 
         if (disconnectedUser) {
+          if (disconnectedUser.isTyping) {
+            emitTypingUpdate(socket, socket.documentId, false);
+          }
           socket.broadcast.to(socket.documentId).emit('user-left', serializePresenceUser(disconnectedUser));
         }
       }

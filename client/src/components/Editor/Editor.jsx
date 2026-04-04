@@ -116,6 +116,7 @@ const EditorComponent = ({
   currentComparableText = '',
   currentVersionAuthorName = '',
   onContentChange,
+  onLocalChange,
   onComparableTextChange,
   onOutlineChange,
   onSelectionChange,
@@ -230,6 +231,7 @@ const EditorComponent = ({
     // 1. DOC SYNC
     ydoc.on('update', (update, origin) => {
       if (origin !== socket && modeRef.current === 'edit') {
+        onLocalChange?.();
         socket.emit('yjs-update', update);
       }
     });
@@ -265,7 +267,7 @@ const EditorComponent = ({
       yDocState.awareness.destroy();
       ydoc.destroy();
     };
-  }, [yDocState]);
+  }, [onLocalChange, yDocState]);
 
   const editor = useEditor({
     editable: canEdit,

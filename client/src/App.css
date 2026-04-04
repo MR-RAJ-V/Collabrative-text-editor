@@ -300,21 +300,75 @@
   background: rgba(255, 255, 255, 0.58);
 }
 
-.status {
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 12px;
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.8);
+  color: var(--text-color);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 11px;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
-.saving {
-  color: #f59e0b;
-  font-weight: 500;
+.status-chip:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
-.saved {
-  color: #10b981;
-  font-weight: 500;
+.status-chip-clickable {
+  cursor: pointer;
+}
+
+.status-chip-clickable:hover {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.status-chip-clickable:active {
+  transform: translateY(1px);
+}
+
+.status-chip-saving {
+  color: #d97706;
+}
+
+.status-chip-saved {
+  color: #059669;
+}
+
+.status-chip-unsaved,
+.status-chip-offline {
+  color: #b45309;
+}
+
+.status-icon {
+  flex-shrink: 0;
+}
+
+.status-icon-spinning {
+  animation: status-spin 1s linear infinite;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+@keyframes status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .last-saved {

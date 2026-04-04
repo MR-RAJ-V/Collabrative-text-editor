@@ -44,6 +44,7 @@ import './App.css';
 const REDIRECT_AFTER_LOGIN_KEY = 'redirectAfterLogin';
 const DEFAULT_TEXT_COLOR = '#0f172a';
 const DEFAULT_HIGHLIGHT_COLOR = '#fef08a';
+const AUTO_SAVE_DELAY_MS = 3000;
 
 const areEditorUiSnapshotsEqual = (current, next) => {
   if (current === next) {
@@ -154,6 +155,11 @@ const sanitizeFilename = (value) => (value || 'untitled-document')
 const formatVersionBannerDate = (value) => new Date(value).toLocaleString([], {
   month: 'short',
   day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+const formatSavedAtTime = (value) => new Date(value).toLocaleTimeString([], {
   hour: 'numeric',
   minute: '2-digit',
 });
@@ -478,6 +484,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const [title, setTitle] = useState('Loading...');
   const [saveStatus, setSaveStatus] = useState('Saved');
   const [lastSaved, setLastSaved] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
   const [comments, setComments] = useState([]);
   const [selection, setSelection] = useState({ from: 0, to: 0, text: '' });
   const [searchQuery, setSearchQuery] = useState('');
@@ -489,6 +496,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const [documentState, setDocumentState] = useState(new Uint8Array());
   const [editorInstanceKey, setEditorInstanceKey] = useState(0);
   const [eventsFeed, setEventsFeed] = useState([]);
+  const [typingUsers, setTypingUsers] = useState({});
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [toolbarEditor, setToolbarEditor] = useState(null);
   const [editorUiState, setEditorUiState] = useState(null);
@@ -508,10 +516,19 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
   const editorRef = useRef(null);
   const panelRef = useRef(null);
-  const saveStatusTimeout = useRef(null);
+  const autoSaveTimeout = useRef(null);
   const titleInputRef = useRef(null);
   const updateDocumentTitleRef = useRef(docsState.updateDocumentTitle);
+  const typingTimeoutsRef = useRef(new Map());
+  const localChangeCounterRef = useRef(0);
+  const trackedSaveChangeCounterRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  const documentTextRef = useRef('');
+  const isDirtyRef = useRef(false);
+  const isConnectedRef = useRef(false);
   const actor = currentUser || guestUser;
+  const currentUserId = actor.uid || actor.userId;
+  const currentUserName = actor.name || actor.username || 'Guest';
   const canEdit = Boolean(auth.isAuthenticated && docAccess?.canEdit);
   const canManage = Boolean(auth.isAuthenticated && docAccess?.canManage);
   const isPreviewMode = versionView.mode === 'preview';
@@ -525,9 +542,90 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     return `${window.location.origin}/doc/${documentId}`;
   }, [documentId]);
 
+  const clearTypingTimeouts = useCallback(() => {
+    typingTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    typingTimeoutsRef.current.clear();
+  }, []);
+
   useEffect(() => {
     updateDocumentTitleRef.current = docsState.updateDocumentTitle;
   }, [docsState.updateDocumentTitle]);
+
+  useEffect(() => {
+    documentTextRef.current = documentText;
+  }, [documentText]);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+  }, [isConnected]);
+
+  const clearAutoSaveTimer = useCallback(() => {
+    if (autoSaveTimeout.current) {
+      clearTimeout(autoSaveTimeout.current);
+      autoSaveTimeout.current = null;
+    }
+  }, []);
+
+  const scheduleAutoSaveTracking = useCallback(() => {
+    clearAutoSaveTimer();
+
+    if (!editorCanEdit || !isConnectedRef.current || !isDirtyRef.current) {
+      return;
+    }
+
+    autoSaveTimeout.current = setTimeout(() => {
+      autoSaveTimeout.current = null;
+
+      if (!editorCanEdit || !isConnectedRef.current || !isDirtyRef.current) {
+        return;
+      }
+
+      if (saveInFlightRef.current) {
+        scheduleAutoSaveTracking();
+        return;
+      }
+
+      saveInFlightRef.current = true;
+      trackedSaveChangeCounterRef.current = localChangeCounterRef.current;
+      setSaveStatus('Saving...');
+    }, AUTO_SAVE_DELAY_MS);
+  }, [clearAutoSaveTimer, editorCanEdit]);
+
+  const markUnsavedChanges = useCallback(() => {
+    if (!editorCanEdit || isPreviewMode) {
+      return;
+    }
+
+    localChangeCounterRef.current += 1;
+    setIsDirty(true);
+
+    if (!saveInFlightRef.current) {
+      setSaveStatus('Unsaved changes');
+    }
+
+    scheduleAutoSaveTracking();
+  }, [editorCanEdit, isPreviewMode, scheduleAutoSaveTracking]);
+
+  const handleManualSave = useCallback(() => {
+    if (!documentId || !editorCanEdit || !isConnectedRef.current) {
+      return;
+    }
+
+    clearAutoSaveTimer();
+
+    if (saveInFlightRef.current) {
+      return;
+    }
+
+    saveInFlightRef.current = true;
+    trackedSaveChangeCounterRef.current = localChangeCounterRef.current;
+    setSaveStatus('Saving...');
+    socket.emit('manual-save');
+  }, [clearAutoSaveTimer, documentId, editorCanEdit]);
 
   const updateSearchMatches = useCallback(() => {
     const editor = editorRef.current;
@@ -587,7 +685,14 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     });
     setLatestVersionMeta(null);
     setRestorePendingVersionId(null);
-  }, [routeDocumentId]);
+    setTypingUsers({});
+    clearTypingTimeouts();
+    clearAutoSaveTimer();
+    localChangeCounterRef.current = 0;
+    trackedSaveChangeCounterRef.current = 0;
+    saveInFlightRef.current = false;
+    setIsDirty(false);
+  }, [clearTypingTimeouts, routeDocumentId]);
 
   useEffect(() => {
     setLoadingTimedOut(false);
@@ -655,6 +760,11 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       setErrorState(null);
       socket.disconnect();
       socket.removeAllListeners();
+      clearAutoSaveTimer();
+      localChangeCounterRef.current = 0;
+      trackedSaveChangeCounterRef.current = 0;
+      saveInFlightRef.current = false;
+      setIsDirty(false);
       setToolbarEditor(null);
       setEditorUiState(null);
       setOutlineHeadings([]);
@@ -673,6 +783,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         setPermissions(buildPermissionsFromDocument(initialDoc));
         setDocAccess(initialDoc.access || null);
         setLastSaved(initialDoc.lastUpdated ? new Date(initialDoc.lastUpdated) : null);
+        documentTextRef.current = initialDoc.content || '';
         setSaveStatus(auth.isAuthenticated ? 'Saved' : 'View only');
         setActiveUsers([]);
         setEventsFeed([]);
@@ -685,13 +796,18 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         socket.connect();
         socket.on('connect', () => {
           setIsConnected(true);
-          setSaveStatus('Saved');
+          setSaveStatus(isDirtyRef.current ? 'Unsaved changes' : 'Saved');
+          if (isDirtyRef.current) {
+            scheduleAutoSaveTracking();
+          }
           socket.emit('join-document', { documentId: initialDoc.documentId });
         });
 
         socket.on('disconnect', () => {
           setIsConnected(false);
           setSaveStatus('Offline');
+          setTypingUsers({});
+          clearTypingTimeouts();
         });
 
         socket.on('connect_error', (error) => {
@@ -717,6 +833,81 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
         socket.on('users-update', (users) => {
           setActiveUsers(users);
+          setTypingUsers((current) => {
+            const activeIds = new Set((users || []).map((user) => user.userId || user.email || user.socketId));
+            const nextEntries = Object.entries(current).filter(([userId]) => userId !== currentUserId && activeIds.has(userId));
+            return nextEntries.length === Object.keys(current).length
+              ? current
+              : Object.fromEntries(nextEntries);
+          });
+        });
+
+        socket.on('typing-update', (event) => {
+          const eventUserId = event?.userId;
+          const eventUserName = event?.userName;
+          const eventSessionId = event?.sessionId;
+          const currentSessionId = socket.id;
+
+          if (!eventUserId || !eventUserName || event?.documentId !== initialDoc.documentId) {
+            return;
+          }
+
+          if (import.meta.env.DEV) {
+            console.log('Incoming typing:', {
+              from: eventUserName,
+              current: currentUserName,
+              session: eventSessionId,
+              currentSession: currentSessionId,
+            });
+          }
+
+          if (eventUserId === currentUserId || (eventSessionId && currentSessionId && eventSessionId === currentSessionId)) {
+            return;
+          }
+
+          const existingTimeout = typingTimeoutsRef.current.get(eventUserId);
+          if (existingTimeout) {
+            window.clearTimeout(existingTimeout);
+            typingTimeoutsRef.current.delete(eventUserId);
+          }
+
+          if (!event.isTyping) {
+            setTypingUsers((current) => {
+              if (!current[eventUserId]) {
+                return current;
+              }
+
+              const next = { ...current };
+              delete next[eventUserId];
+              return next;
+            });
+            return;
+          }
+
+          setTypingUsers((current) => ({
+            ...current,
+            [eventUserId]: {
+              userId: eventUserId,
+              userName: eventUserName,
+              sessionId: eventSessionId || '',
+              timestamp: event.timestamp || Date.now(),
+            },
+          }));
+
+          const timeoutId = window.setTimeout(() => {
+            setTypingUsers((current) => {
+              if (!current[eventUserId]) {
+                return current;
+              }
+
+              const next = { ...current };
+              delete next[eventUserId];
+              return next;
+            });
+            typingTimeoutsRef.current.delete(eventUserId);
+          }, 3000);
+
+          typingTimeoutsRef.current.set(eventUserId, timeoutId);
         });
 
         socket.on('user-joined', (user) => {
@@ -747,6 +938,10 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
             previewLoading: false,
           });
           setRestorePendingVersionId(null);
+          setIsDirty(false);
+          localChangeCounterRef.current = 0;
+          trackedSaveChangeCounterRef.current = 0;
+          saveInFlightRef.current = false;
           setLastSaved(new Date());
           setSaveStatus('Saved');
           setEventsFeed((feed) => [
@@ -756,14 +951,55 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         });
 
         socket.on('yjs-update', () => {
-          setLastSaved(new Date());
-          setSaveStatus('Saved');
+          if (!saveInFlightRef.current && !isDirtyRef.current && isConnectedRef.current) {
+            setSaveStatus('Saved');
+          }
         });
 
         socket.on('save-status', ({ status, at }) => {
-          setSaveStatus(status === 'saved' ? 'Saved' : status);
-          if (at) {
-            setLastSaved(new Date(at));
+          if (status === 'saving') {
+            if (saveInFlightRef.current) {
+              setSaveStatus('Saving...');
+            }
+            return;
+          }
+
+          if (status === 'saved') {
+            if (at) {
+              setLastSaved(new Date(at));
+            }
+
+            if (!saveInFlightRef.current) {
+              if (!isDirtyRef.current && isConnectedRef.current) {
+                setSaveStatus('Saved');
+              }
+              return;
+            }
+
+            saveInFlightRef.current = false;
+
+            if (localChangeCounterRef.current > trackedSaveChangeCounterRef.current) {
+              setIsDirty(true);
+              setSaveStatus(isConnectedRef.current ? 'Unsaved changes' : 'Offline');
+              scheduleAutoSaveTracking();
+              return;
+            }
+
+            setIsDirty(false);
+            setSaveStatus('Saved');
+            return;
+          }
+
+          if (status === 'error') {
+            saveInFlightRef.current = false;
+
+            if (isDirtyRef.current) {
+              setSaveStatus(isConnectedRef.current ? 'Unsaved changes' : 'Offline');
+              scheduleAutoSaveTracking();
+              return;
+            }
+
+            setSaveStatus(isConnectedRef.current ? 'Saved' : 'Offline');
           }
         });
 
@@ -822,11 +1058,10 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       socket.disconnect();
       socket.removeAllListeners();
       setIsConnected(false);
-      if (saveStatusTimeout.current) {
-        clearTimeout(saveStatusTimeout.current);
-      }
+      clearTypingTimeouts();
+      clearAutoSaveTimer();
     };
-  }, [auth.isAuthenticated, auth.loading, currentUser, pathname, routeDocumentId]);
+  }, [auth.isAuthenticated, auth.loading, clearAutoSaveTimer, clearTypingTimeouts, currentUser, currentUserId, currentUserName, pathname, routeDocumentId, scheduleAutoSaveTracking]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -844,13 +1079,17 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [auth.token, canEdit, currentUser, documentId]);
 
-  const markSaving = useCallback(() => {
-    setSaveStatus('Saving...');
-    if (saveStatusTimeout.current) {
-      clearTimeout(saveStatusTimeout.current);
-    }
-    saveStatusTimeout.current = setTimeout(() => setSaveStatus(isConnected ? 'Saved' : 'Offline'), 2200);
-  }, [isConnected]);
+  useEffect(() => {
+    const handleSaveShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && editorCanEdit) {
+        event.preventDefault();
+        handleManualSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleSaveShortcut);
+    return () => window.removeEventListener('keydown', handleSaveShortcut);
+  }, [editorCanEdit, handleManualSave]);
 
   const handleSelectVersion = useCallback((versionId) => {
     if (!versionId) {
@@ -902,7 +1141,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       return;
     }
 
-    markSaving();
     socket.emit('title-update', newTitle);
   };
 
@@ -1003,8 +1241,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
     await navigator.clipboard.writeText(editor.state.doc.textBetween(from, to, ' '));
     editor.chain().focus().deleteSelection().run();
-    markSaving();
-  }, [editorCanEdit, markSaving]);
+  }, [editorCanEdit]);
 
   const handleClipboardPaste = useCallback(async () => {
     const editor = editorRef.current;
@@ -1015,9 +1252,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     const content = await navigator.clipboard.readText();
     if (content) {
       editor.chain().focus().insertContent(content).run();
-      markSaving();
     }
-  }, [editorCanEdit, markSaving]);
+  }, [editorCanEdit]);
 
   const handleInsertLink = useCallback(() => {
     const editor = editorRef.current;
@@ -1038,8 +1274,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     }
 
     editor.chain().focus().extendMarkRange('link').setLink({ href: nextUrl.trim() }).run();
-    markSaving();
-  }, [editorCanEdit, markSaving]);
+  }, [editorCanEdit]);
 
   const handleInsertImage = useCallback(() => {
     const editor = editorRef.current;
@@ -1053,8 +1288,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     }
 
     editor.chain().focus().setImage({ src: src.trim(), alt: 'Inserted image' }).run();
-    markSaving();
-  }, [editorCanEdit, markSaving]);
+  }, [editorCanEdit]);
 
   const handleSearchNext = () => {
     if (!searchMatches.length || !editorRef.current) {
@@ -1072,7 +1306,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     }
 
     editorRef.current.chain().focus().insertContentAt(searchMatches[currentMatchIndex], replaceValue).run();
-    markSaving();
   };
 
   const handleReplaceAll = () => {
@@ -1083,7 +1316,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     [...searchMatches].reverse().forEach((match) => {
       editorRef.current.chain().focus().insertContentAt(match, replaceValue).run();
     });
-    markSaving();
   };
 
   const handleShare = async (payload) => {
@@ -1175,19 +1407,14 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     };
   }, [selection, toolbarEditor]);
 
-  const runEditorCommand = useCallback((command, { save = true } = {}) => {
+  const runEditorCommand = useCallback((command) => {
     const editor = editorRef.current;
     if (!editor || !editorCanEdit) {
       return false;
     }
 
-    const didRun = command(editor);
-    if (didRun && save) {
-      markSaving();
-    }
-
-    return didRun;
-  }, [editorCanEdit, markSaving]);
+    return command(editor);
+  }, [editorCanEdit]);
 
   const formattingActions = useMemo(() => ({
     undo: () => runEditorCommand((editor) => formatActions.undo(editor)),
@@ -1242,6 +1469,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         label: 'File',
         items: [
           { label: 'New Document', onSelect: onCreateAndOpenDocument },
+          { label: 'Save', shortcut: 'Ctrl+S', onSelect: handleManualSave, disabled: !editorCanEdit || !isConnected },
           { label: 'Rename Document', onSelect: handleFocusTitle, disabled: !editorCanEdit },
           { type: 'separator' },
           { label: 'Download as .txt', onSelect: handleDownloadText },
@@ -1324,11 +1552,13 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     handleFocusTitle,
     handleInsertImage,
     handleInsertLink,
+    handleManualSave,
     handleZoomIn,
     handleZoomOut,
     onCreateAndOpenDocument,
     formattingActions,
     editorUiState,
+    isConnected,
     selection.text,
     theme,
     toggleTheme,
@@ -1409,6 +1639,9 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         canEdit={editorCanEdit}
         saveStatus={saveStatus}
         lastSaved={lastSaved}
+        onSaveStatusClick={handleManualSave}
+        canTriggerSave={editorCanEdit && isConnected && !saveInFlightRef.current}
+        formatSavedAtTime={formatSavedAtTime}
         docAccess={docAccess}
         menuContent={<MenuBar menus={menuItems} />}
         actionContent={(
@@ -1429,7 +1662,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
         )}
         rightContent={(
           <>
-            {auth.isAuthenticated ? <Presence users={activeUsers} /> : null}
+            {auth.isAuthenticated ? <Presence users={activeUsers} typingUsers={typingUsers} currentUserId={currentUserId} /> : null}
             <div className="workspace-actions">
               {canManage ? (
                 <button className="primary-button" onClick={() => setShowShare((value) => !value)}>Share</button>
@@ -1628,6 +1861,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           currentComparableText={documentComparableText}
           currentVersionAuthorName={latestVersionMeta?.createdBy?.name || ''}
           onContentChange={setDocumentText}
+          onLocalChange={markUnsavedChanges}
           onComparableTextChange={setDocumentComparableText}
           onOutlineChange={handleOutlineChange}
           onSelectionChange={setSelection}
