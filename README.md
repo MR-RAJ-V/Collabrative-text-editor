@@ -1,96 +1,139 @@
-# CollabWrite - Real-Time Collaborative Editor
+# Doksify
 
-A production-ready real-time collaborative text editor built with WebSockets and CRDTs for seamless multi-user conflict resolution.
+Doksify is a real-time collaborative text editor built for multi-user writing, sharing, commenting, and version recovery. The app combines a React + Vite frontend with an Express + Socket.IO backend, Firebase authentication, MongoDB persistence, and Yjs-based collaboration.
 
-[![Demo Video](https://img.shields.io/badge/Watch-Demo_Video-blue)](#demo-video)
-[![Live Preview](https://img.shields.io/badge/Live-Production-success)](#live-preview)
+## Highlights
 
----
+- Real-time collaborative editing with Yjs and Socket.IO
+- Google sign-in with Firebase Authentication
+- Shared link access with viewer or editor permissions
+- Comments and suggestion workflows
+- Manual and automatic version history
+- Presence, typing, and cursor updates for active collaborators
 
-## 📸 Screenshots
-_Placeholder for Screenshots_
-*(Add images of the Editor, Presence Panel, and History UI here)*
+## Tech Stack
 
----
+- Frontend: React, Vite, TipTap, Axios, Firebase
+- Backend: Node.js, Express, Socket.IO, Mongoose
+- Realtime sync: Yjs, y-protocols
+- Database: MongoDB
+- Auth: Firebase Authentication + Firebase Admin
 
-## 🌟 Features
-- **Real-Time Collaboration**: Type concurrently with multiple users in the same document room. No locking, no data loss.
-- **Yjs CRDT Integration**: Deterministic conflict resolution using Yjs binary buffers (no rigid operational transforms).
-- **Live Cursor Tracking**: See where your teammates are pointing with vibrant colored carets and nametags synced effortlessly via Y-Awareness over Socket.IO.
-- **User Presence**: Dynamic header UI tracking exactly who is currently online in your document.
-- **Rich Text Editor**: Beautiful, minimalist Prosemirror-backed TipTap interface supporting typography elements.
-- **Crash-Proof Persistence**: Debounced background persistence saves the native binary Yjs State to MongoDB effortlessly.
-- **Revision History**: View and instantly fallback to older auto-saved document snapshots preserved reliably in the database arrays.
+## AI Tools Used
 
----
+- ChatGPT
+- Anti Gravety
 
-## 🛠 Tech Stack
-- **Frontend**: React.js, Vite, `socket.io-client`, TipTap
-- **Backend**: Node.js, Express, `socket.io`
-- **Synchronization Layer**: Yjs (`y-protocols`, `@tiptap/extension-collaboration`)
-- **Database**: MongoDB (Mongoose)
+## Project Structure
 
----
-
-## 🚀 Setup Instructions
-
-### Prerequisites
-- Node.js (v16+)
-- MongoDB daemon running locally on `27017` or an external Atlas Cluster URI.
-
-### 1. Clone & Configure
-```bash
-git clone https://github.com/your-username/collabwrite.git
-cd collabwrite
+```text
+client/   React frontend
+server/   Express API, Socket.IO server, MongoDB models
+README.md
+INSTRUCTIONS.md
+API_DOCUMENTATION.md
 ```
 
-**Backend `.env`:** (Create inside `/server`)
-```env
-PORT=5000
-MONGO_URI=mongodb://127.0.0.1:27017/collaborative-editor
-```
+## Quick Start
 
-**Frontend `.env`:** (Create inside `/client`)
-```env
-VITE_API_URL=http://localhost:5000/api
-VITE_SOCKET_URL=http://localhost:5000
-```
+### 1. Install dependencies
 
-### 2. Run Locally
-
-Open two separate terminal environments:
-
-**Terminal 1 (Backend):**
 ```bash
 cd server
 npm install
-npm run dev
 ```
 
-**Terminal 2 (Frontend):**
 ```bash
 cd client
 npm install
+```
+
+### 2. Configure environment variables
+
+Backend: create `server/.env`
+
+```env
+PORT=5000
+MONGO_URI=mongodb+srv://<username>:<password>@<cluster-host>/collaborative-editor?retryWrites=true&w=majority
+CLIENT_URL=http://localhost:5173
+FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_CLIENT_EMAIL=your-service-account-email
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Frontend: create `client/.env`
+
+```env
+VITE_API_URL=http://localhost:5000/api
+VITE_SOCKET_URL=http://localhost:5000
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_APP_ID=your-app-id
+VITE_FIREBASE_AUTH_FLOW=popup
+```
+
+You can also copy from the existing example files:
+
+```bash
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+```
+
+### 3. Run locally
+
+Backend:
+
+```bash
+cd server
 npm run dev
 ```
 
-Visit `http://localhost:5173` in your browser. Copy the generated Document URL and open it in a second window to test Live Collaboration natively!
+Frontend:
 
----
+```bash
+cd client
+npm run dev
+```
 
-## 📦 Deployment Links
+Open `http://localhost:5173` and sign in with Google to create and manage documents.
 
-_Placeholder Links for your CI/CD Pipeline_
-- **Frontend Site**: [https://your-react-app.vercel.app](#)
-- **Backend API**: [https://your-express-api.onrender.com](#)
+## Deployment Notes
 
-### Recommended Deployment Providers
-- **Backend**: Dockerize or deploy directly to Render / Railway / Heroku.
-- **Frontend**: Connect Vite output directory (`dist`) to Vercel or Netlify.
-- **Database**: Host freely relying on MongoDB Atlas clusters. Waitlist database IP connections appropriately.
+- Deploy the backend from `server/`
+- Deploy the frontend from `client/`
+- Point `VITE_API_URL` to `<backend-url>/api`
+- Point `VITE_SOCKET_URL` to `<backend-url>`
+- Set `CLIENT_URL` on the server to your frontend origin
+- Configure Firebase web app values on the client and Firebase Admin credentials on the server
 
----
+## Documentation
 
-## 🎥 Demo Video
-_Placeholder for Demo Video_
-[Insert YouTube or Loom walkthrough link here]
+- Setup and deployment guide: `INSTRUCTIONS.md`
+- API reference: `API_DOCUMENTATION.md`
+
+## Core REST Routes
+
+- `GET /health`
+- `GET /api/auth/me`
+- `GET /api/documents`
+- `POST /api/documents`
+- `GET /api/documents/:id`
+- `PUT /api/documents/:id`
+- `PATCH /api/documents/:id/share`
+- `POST /api/documents/:id/comments`
+- `POST /api/documents/:id/versions`
+
+## Realtime Features
+
+Socket.IO powers:
+
+- document join and access sync
+- collaborative Yjs updates
+- presence and typing status
+- live comments and suggestion broadcasts
+- auto-save and version events
+
+## License
+
+This project is currently shared for hackathon and development use.
