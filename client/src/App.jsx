@@ -126,14 +126,21 @@ const colorFromId = (id) => {
   return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
 };
 
+const isInternalPath = (pathname) => typeof pathname === 'string' && pathname.startsWith('/') && !pathname.startsWith('//');
+
 const saveRedirectAfterLogin = (pathname) => {
-  if (pathname) {
+  if (isInternalPath(pathname)) {
     localStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, pathname);
   }
 };
 
-const consumeRedirectAfterLogin = () => {
+const peekRedirectAfterLogin = () => {
   const redirect = localStorage.getItem(REDIRECT_AFTER_LOGIN_KEY);
+  return isInternalPath(redirect) ? redirect : '';
+};
+
+const consumeRedirectAfterLogin = () => {
+  const redirect = peekRedirectAfterLogin();
   if (redirect) {
     localStorage.removeItem(REDIRECT_AFTER_LOGIN_KEY);
   }
@@ -311,6 +318,10 @@ const PrivateRoute = ({ auth, pathname, children, fallback }) => {
 
 const LoginRoute = ({ auth, onCreateAndOpenDocument }) => {
   const [startupError, setStartupError] = useState('');
+  const pendingRedirect = peekRedirectAfterLogin();
+  const loginMessage = pendingRedirect.startsWith('/doc/')
+    ? 'Sign in to continue to the document link you opened.'
+    : '';
 
   useEffect(() => {
     if (auth.loading || !auth.isAuthenticated) {
@@ -377,7 +388,14 @@ const LoginRoute = ({ auth, onCreateAndOpenDocument }) => {
     return <SpinnerScreen label="Preparing your workspace..." />;
   }
 
-  return <Login error={startupError || auth.authError} onSignIn={auth.signIn} isSigningIn={auth.isSigningIn} />;
+  return (
+    <Login
+      error={startupError || auth.authError}
+      helperText={loginMessage}
+      onSignIn={auth.signIn}
+      isSigningIn={auth.isSigningIn}
+    />
+  );
 };
 
 const DocumentsRoute = ({ auth, onCreateAndOpenDocument }) => {
@@ -753,10 +771,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     let mounted = true;
 
     const initializeDocument = async () => {
-      if (auth.loading) {
-        return;
-      }
-
       setLoading(true);
       setErrorState(null);
       socket.disconnect();
@@ -1558,7 +1572,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   ]);
 
 
-  if (auth.loading || loading) {
+  if (loading) {
     if (loadingTimedOut) {
       return (
         <EmptyState
@@ -1903,6 +1917,16 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   );
 };
 
+const DocumentAccessRoute = (props) => {
+  const { auth } = props;
+
+  if (auth.loading) {
+    return <SpinnerScreen label="Checking document access..." />;
+  }
+
+  return <DocumentRoute {...props} />;
+};
+
 function App() {
   const pathname = usePathname();
   const route = getRoute(pathname);
@@ -1956,7 +1980,7 @@ function App() {
 
   if (route.name === 'document') {
     return (
-      <DocumentRoute
+      <DocumentAccessRoute
         auth={auth}
         currentUser={currentUser}
         pathname={pathname}

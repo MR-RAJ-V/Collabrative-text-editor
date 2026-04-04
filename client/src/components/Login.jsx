@@ -1,7 +1,7 @@
 import React from 'react';
 import './Login.css';
 
-const Login = ({ error, onSignIn, isSigningIn }) => (
+const Login = ({ error, helperText, onSignIn, isSigningIn }) => (
   <div className="login-screen">
     <div className="login-card">
       <p className="login-eyebrow">Collaborative Editor</p>
@@ -9,6 +9,7 @@ const Login = ({ error, onSignIn, isSigningIn }) => (
       <p className="login-copy">
         Use Google Sign-In to access your documents, share them with collaborators, and keep editing permissions secure.
       </p>
+      {helperText ? <p className="login-copy">{helperText}</p> : null}
       <button className="login-button" onClick={onSignIn} disabled={isSigningIn}>
         {isSigningIn ? 'Signing in...' : 'Sign in with Google'}
       </button>
