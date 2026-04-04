@@ -4,6 +4,7 @@ const EditorLayout = ({
   sidebar,
   children,
   isSidebarOpen,
+  isFocusMode = false,
   onToggleSidebar,
   onCloseSidebar,
   sidebarMode = 'desktop',
@@ -15,7 +16,7 @@ const EditorLayout = ({
 
   return (
     <main
-      className={`editor-layout editor-layout-${sidebarMode}`}
+      className={`editor-layout editor-layout-${sidebarMode} ${isFocusMode ? 'editor-layout-focus' : ''}`.trim()}
       style={{ '--workspace-header-offset': `${headerOffset}px` }}
     >
       <div className={`editor-workspace ${showSidebar ? 'sidebar-visible' : 'sidebar-hidden'}`}>

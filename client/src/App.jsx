@@ -547,6 +547,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const docsState = useDocuments(auth.isAuthenticated);
   const [sidebarMode, setSidebarMode] = useState(() => getSidebarMode(window.innerWidth));
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => getSidebarMode(window.innerWidth) === 'desktop');
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const [workspaceHeaderHeight, setWorkspaceHeaderHeight] = useState(138);
 
   const editorRef = useRef(null);
@@ -581,8 +582,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   }, []);
 
   useEffect(() => {
-    setIsSidebarOpen(sidebarMode === 'desktop');
-  }, [sidebarMode]);
+    setIsSidebarOpen(sidebarMode === 'desktop' && !isFocusMode);
+  }, [isFocusMode, sidebarMode]);
 
   useEffect(() => {
     if (sidebarMode === 'desktop' || !isSidebarOpen) {
@@ -1729,7 +1730,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
   return (
     <div
-      className="app-container"
+      className={`app-container ${isFocusMode ? 'app-container-focus' : ''}`.trim()}
       style={{ '--workspace-header-height': `${workspaceHeaderHeight}px` }}
     >
       <Header
@@ -1768,6 +1769,14 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
               {canManage ? (
                 <button className="primary-button" onClick={() => setShowShare((value) => !value)}>Share</button>
               ) : null}
+              <button
+                className={`secondary-chip ${isFocusMode ? 'secondary-chip-active' : ''}`.trim()}
+                onClick={() => setIsFocusMode((value) => !value)}
+                aria-pressed={isFocusMode}
+                title={isFocusMode ? 'Exit focus mode' : 'Enter focus mode'}
+              >
+                {isFocusMode ? 'Exit Focus' : 'Focus Mode'}
+              </button>
               <button className="secondary-chip" onClick={toggleTheme}>
                 {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
               </button>
@@ -1857,7 +1866,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
 
       <EditorLayout
         sidebarMode={sidebarMode}
-        isSidebarOpen={isSidebarOpen}
+        isSidebarOpen={isSidebarOpen && !isFocusMode}
+        isFocusMode={isFocusMode}
         onToggleSidebar={() => setIsSidebarOpen((value) => !value)}
         onCloseSidebar={() => setIsSidebarOpen(false)}
         headerOffset={workspaceHeaderHeight}

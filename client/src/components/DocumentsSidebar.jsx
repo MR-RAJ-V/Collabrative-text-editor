@@ -29,29 +29,6 @@ const DocumentsSidebar = ({
   };
   return (
     <aside className="outline-sidebar">
-      <style>
-        {`
-          .outline-doc-item .doc-delete-button {
-            opacity: 0;
-            transition: opacity 0.15s ease, color 0.15s ease;
-            right: 8px;
-            position: absolute;
-            background: var(--panel-bg, rgba(20,20,20));
-          }
-          .outline-doc-item:hover .doc-delete-button {
-            opacity: 0.6;
-          }
-          .outline-doc-item .doc-delete-button:hover {
-            opacity: 1;
-            color: #ef4444; 
-          }
-          .outline-doc-item {
-            position: relative;
-            cursor: pointer;
-            user-select: none;
-          }
-        `}
-      </style>
       {canCollapse ? (
         <div className="outline-sidebar-top">
           <button className="outline-icon-button" title="Collapse navigation" onClick={onToggle}>
@@ -84,8 +61,8 @@ const DocumentsSidebar = ({
                   onClick={() => onNavigate(docId)}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '12px' }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', paddingRight: '24px', flex: 1 }}>
-                    <FileText size={16} style={{ flexShrink: 0, opacity: 0.7 }} />
+                  <div className="outline-doc-main">
+                    <FileText size={16} className="outline-doc-icon" />
                     {editingId === docId ? (
                       <input
                         value={tempTitle}
@@ -96,22 +73,12 @@ const DocumentsSidebar = ({
                           if (e.key === 'Escape') setEditingId(null);
                         }}
                         autoFocus
-                        style={{
-                          background: 'transparent',
-                          color: 'var(--text-color)',
-                          border: '1px solid #1a73e8',
-                          borderRadius: '4px',
-                          padding: '2px 4px',
-                          outline: 'none',
-                          width: '100%',
-                          fontSize: 'inherit',
-                          fontFamily: 'inherit'
-                        }}
+                        className="outline-doc-input"
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
                       <span 
-                        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%' }}
+                        className="outline-doc-title"
                         onDoubleClick={() => startEditing(doc)}
                       >
                         {doc.title || 'Untitled Document'}

@@ -40,8 +40,8 @@
 .toolbar button,
 .text-toolbar button,
 .toolbar-color-button {
-  background: transparent;
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(229, 231, 235, 0.9);
   cursor: pointer;
   padding: 8px;
   border-radius: 8px;
@@ -60,8 +60,8 @@
 .toolbar button:hover,
 .text-toolbar button:hover,
 .toolbar-color-button:hover {
-  background: rgba(148, 163, 184, 0.14);
-  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(37, 99, 235, 0.14);
   color: var(--text-color);
 }
 
@@ -76,9 +76,9 @@
 
 .toolbar button.active,
 .text-toolbar button.active {
-  background: rgba(26, 115, 232, 0.12);
-  border-color: rgba(26, 115, 232, 0.18);
-  color: #0b57d0;
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.18);
+  color: #1d4ed8;
 }
 
 .toolbar-select-shell {
@@ -91,7 +91,7 @@
   padding: 8px 32px 8px 12px;
   border-radius: 8px;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.86);
   color: var(--text-color);
   font-size: 14px;
   outline: none;
@@ -153,7 +153,7 @@
   width: 1px;
   align-self: stretch;
   margin: 0 2px;
-  background: rgba(148, 163, 184, 0.38);
+  background: rgba(203, 213, 225, 0.9);
   opacity: 0.8;
 }
 
@@ -171,8 +171,11 @@
   justify-content: center;
   width: 100%;
   min-width: fit-content;
-  background: #0b1a2b;
-  padding: clamp(18px, 3vw, 40px) 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.34), transparent 30%),
+    linear-gradient(180deg, #f5f7fb 0%, var(--editor-stage-bg) 100%);
+  padding: clamp(20px, 3vw, 40px) 0;
+  border-radius: 18px;
 }
 
 .document-shell {
@@ -195,10 +198,11 @@
   width: 794px;
   height: 1123px;
   margin: 0 auto 32px;
-  background: #ffffff;
+  background: var(--editor-paper-bg);
   box-sizing: border-box;
-  border-radius: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-paper);
   pointer-events: none;
 }
 
@@ -363,12 +367,29 @@
   color: #0f172a;
 }
 
+:root[data-theme='dark'] .toolbar button,
+:root[data-theme='dark'] .text-toolbar button,
+:root[data-theme='dark'] .toolbar-color-button {
+  background: rgba(10, 20, 38, 0.78);
+  border-color: rgba(34, 50, 77, 0.92);
+}
+
 :root[data-theme='dark'] .toolbar-select {
   background: rgba(15, 23, 42, 0.72);
 }
 
 :root[data-theme='dark'] .toolbar-select:focus {
   background: rgba(15, 23, 42, 0.95);
+}
+
+:root[data-theme='dark'] .document-container {
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 30%),
+    linear-gradient(180deg, #0f172a 0%, #0b1525 100%);
+}
+
+:root[data-theme='dark'] .page {
+  border-color: rgba(203, 213, 225, 0.18);
 }
 
 :root[data-theme='dark'] .editor-root-wrapper .ProseMirror h1,

@@ -2,13 +2,22 @@
 
 :root {
   color-scheme: light;
-  --bg-color: #f3f7fb;
-  --panel-bg: rgba(255, 255, 255, 0.92);
-  --panel-muted: #f7fafc;
-  --text-color: #0f172a;
-  --muted-text: #64748b;
-  --border-color: #d9e2ec;
+  --bg-color: #f8fafc;
+  --panel-bg: rgba(255, 255, 255, 0.88);
+  --panel-muted: #f1f5f9;
+  --text-color: #111827;
+  --muted-text: #6b7280;
+  --border-color: #e5e7eb;
   --accent-color: #2563eb;
+  --app-surface: #f8fafc;
+  --sidebar-bg: #f1f5f9;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.86);
+  --header-bg: rgba(248, 250, 252, 0.9);
+  --toolbar-bg: rgba(255, 255, 255, 0.82);
+  --editor-stage-bg: #eef2f7;
+  --editor-paper-bg: #ffffff;
+  --shadow-soft: 0 12px 32px rgba(15, 23, 42, 0.06);
+  --shadow-paper: 0 18px 48px rgba(15, 23, 42, 0.08);
 }
 
 :root[data-theme='dark'] {
@@ -20,6 +29,15 @@
   --muted-text: #94a3b8;
   --border-color: #22324d;
   --accent-color: #38bdf8;
+  --app-surface: #07111f;
+  --sidebar-bg: rgba(10, 20, 38, 0.94);
+  --sidebar-item-hover: rgba(15, 23, 42, 0.92);
+  --header-bg: rgba(10, 20, 38, 0.94);
+  --toolbar-bg: rgba(10, 20, 38, 0.88);
+  --editor-stage-bg: #0b1525;
+  --editor-paper-bg: #ffffff;
+  --shadow-soft: 0 18px 40px rgba(2, 8, 23, 0.3);
+  --shadow-paper: 0 18px 48px rgba(2, 8, 23, 0.24);
 }
 
 html,
@@ -34,6 +52,7 @@ body {
   box-sizing: border-box;
   background: var(--bg-color);
   color: var(--text-color);
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 * {
