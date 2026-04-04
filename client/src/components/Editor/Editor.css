@@ -1,6 +1,8 @@
 .editor-container {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   background: transparent;
 }
 
@@ -160,16 +162,17 @@
   width: 100%;
   padding: 0 0 48px;
   cursor: text;
-  overflow: auto;
+  overflow: visible;
 }
 
 .document-container {
   position: relative;
   display: flex;
   justify-content: center;
-  min-width: max-content;
+  width: 100%;
+  min-width: fit-content;
   background: #0b1a2b;
-  padding: 40px 0;
+  padding: clamp(18px, 3vw, 40px) 0;
 }
 
 .document-shell {
@@ -177,6 +180,7 @@
   width: 794px;
   min-height: var(--page-track-height, 1123px);
   margin: 0 auto;
+  flex: 0 0 auto;
   zoom: var(--editor-scale);
   transform-origin: top center;
 }
@@ -400,7 +404,7 @@
   }
 
   .document-container {
-    padding: 24px 16px 32px;
+    padding: 24px 0 32px;
   }
 
   .document-shell {

@@ -1,9 +1,9 @@
 .sidebar-panel {
   position: fixed;
-  top: 138px;
+  top: calc(var(--workspace-header-height, 138px) + 12px);
   right: 24px;
   width: 360px;
-  max-height: calc(100vh - 162px);
+  max-height: calc(100vh - var(--workspace-header-height, 138px) - 36px);
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
   border-radius: 18px;
@@ -36,7 +36,8 @@
 
 .sidebar-content {
   overflow: auto;
-  max-height: calc(100vh - 226px);
+  max-height: calc(100vh - var(--workspace-header-height, 138px) - 100px);
+  overscroll-behavior: contain;
   padding: 18px;
 }
 

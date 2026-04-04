@@ -46,6 +46,20 @@ const REDIRECT_AFTER_LOGIN_KEY = 'redirectAfterLogin';
 const DEFAULT_TEXT_COLOR = '#0f172a';
 const DEFAULT_HIGHLIGHT_COLOR = '#fef08a';
 const AUTO_SAVE_DELAY_MS = 3000;
+const DESKTOP_SIDEBAR_BREAKPOINT = 1200;
+const TABLET_SIDEBAR_BREAKPOINT = 800;
+
+const getSidebarMode = (width) => {
+  if (width < TABLET_SIDEBAR_BREAKPOINT) {
+    return 'mobile';
+  }
+
+  if (width <= DESKTOP_SIDEBAR_BREAKPOINT) {
+    return 'tablet';
+  }
+
+  return 'desktop';
+};
 
 const areEditorUiSnapshotsEqual = (current, next) => {
   if (current === next) {
@@ -531,10 +545,13 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     previewLoading: false,
   });
   const docsState = useDocuments(auth.isAuthenticated);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 900);
+  const [sidebarMode, setSidebarMode] = useState(() => getSidebarMode(window.innerWidth));
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => getSidebarMode(window.innerWidth) === 'desktop');
+  const [workspaceHeaderHeight, setWorkspaceHeaderHeight] = useState(138);
 
   const editorRef = useRef(null);
   const panelRef = useRef(null);
+  const headerRef = useRef(null);
   const autoSaveTimeout = useRef(null);
   const titleInputRef = useRef(null);
   const updateDocumentTitleRef = useRef(docsState.updateDocumentTitle);
@@ -552,6 +569,80 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const canManage = Boolean(auth.isAuthenticated && docAccess?.canManage);
   const isPreviewMode = versionView.mode === 'preview';
   const editorCanEdit = canEdit && !isPreviewMode;
+
+  useEffect(() => {
+    const handleResize = () => {
+      setSidebarMode(getSidebarMode(window.innerWidth));
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    setIsSidebarOpen(sidebarMode === 'desktop');
+  }, [sidebarMode]);
+
+  useEffect(() => {
+    if (sidebarMode === 'desktop' || !isSidebarOpen) {
+      return undefined;
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isSidebarOpen, sidebarMode]);
+
+  useEffect(() => {
+    const htmlStyle = document.documentElement.style;
+    const bodyStyle = document.body.style;
+    const previousHtmlOverflow = htmlStyle.overflow;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscroll = bodyStyle.overscrollBehavior;
+
+    htmlStyle.overflow = 'hidden';
+    bodyStyle.overflow = 'hidden';
+    bodyStyle.overscrollBehavior = 'none';
+
+    return () => {
+      htmlStyle.overflow = previousHtmlOverflow;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscroll;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!headerRef.current) {
+      return undefined;
+    }
+
+    const updateHeaderHeight = () => {
+      const nextHeight = Math.ceil(headerRef.current?.getBoundingClientRect().height || 0);
+      if (nextHeight) {
+        setWorkspaceHeaderHeight(nextHeight);
+      }
+    };
+
+    updateHeaderHeight();
+
+    const observer = new ResizeObserver(() => {
+      updateHeaderHeight();
+    });
+
+    observer.observe(headerRef.current);
+    window.addEventListener('resize', updateHeaderHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeaderHeight);
+    };
+  }, []);
 
   const shareableLink = useMemo(() => {
     if (!documentId) {
@@ -1637,8 +1728,12 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     }));
 
   return (
-    <div className="app-container">
+    <div
+      className="app-container"
+      style={{ '--workspace-header-height': `${workspaceHeaderHeight}px` }}
+    >
       <Header
+        headerRef={headerRef}
         title={title}
         titleInputRef={titleInputRef}
         onTitleChange={handleTitleChange}
@@ -1761,10 +1856,14 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
       ) : null}
 
       <EditorLayout
+        sidebarMode={sidebarMode}
         isSidebarOpen={isSidebarOpen}
-        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        onToggleSidebar={() => setIsSidebarOpen((value) => !value)}
+        onCloseSidebar={() => setIsSidebarOpen(false)}
+        headerOffset={workspaceHeaderHeight}
         sidebar={(
           <DocumentsSidebar
+            canCollapse={sidebarMode !== 'desktop'}
             documents={docsState.documents}
             activeDocumentId={documentId}
             onToggle={() => setIsSidebarOpen(false)}
@@ -1791,7 +1890,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
               }
             }}
             onNavigate={(id) => {
-              if (window.innerWidth <= 900) {
+              if (sidebarMode !== 'desktop') {
                 setIsSidebarOpen(false);
               }
               navigateToPath(`/doc/${id}`);

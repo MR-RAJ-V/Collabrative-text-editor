@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle2, FileText, LoaderCircle, Lock } from 'lucide-react';
 
 const Header = ({
+  headerRef,
   title,
   titleInputRef,
   onTitleChange,
@@ -31,7 +32,7 @@ const Header = ({
   const statusTimestamp = lastSaved && formatSavedAtTime ? `Saved at ${formatSavedAtTime(lastSaved)}` : null;
 
   return (
-    <header className="workspace-header">
+    <header className="workspace-header" ref={headerRef}>
       <div className="workspace-topbar">
         <div className="workspace-brand-block">
           <div className="workspace-brand-row">

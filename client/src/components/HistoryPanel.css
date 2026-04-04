@@ -7,7 +7,7 @@
 
 .history-sidebar {
   position: fixed;
-  top: 138px;
+  top: var(--workspace-header-height, 138px);
   right: 0;
   bottom: 0;
   width: min(420px, calc(100vw - 32px));
@@ -124,13 +124,14 @@
 
 .version-list-shell {
   overflow: auto;
-  max-height: calc(100vh - 330px);
+  max-height: calc(100vh - var(--workspace-header-height, 138px) - 192px);
+  overscroll-behavior: contain;
   padding: 0 10px 18px;
 }
 
 .version-list-shell-sidebar {
   max-height: none;
-  height: calc(100vh - 270px);
+  height: calc(100vh - var(--workspace-header-height, 138px) - 132px);
 }
 
 .version-group {

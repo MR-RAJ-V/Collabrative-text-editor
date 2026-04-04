@@ -1,7 +1,16 @@
 import React, { memo, useState } from 'react';
 import { ChevronLeft, FileText, Plus, Trash2 } from 'lucide-react';
 
-const DocumentsSidebar = ({ documents, activeDocumentId, onCreateDocument, onDeleteDocument, onNavigate, onRenameDocument, onToggle }) => {
+const DocumentsSidebar = ({
+  documents,
+  activeDocumentId,
+  onCreateDocument,
+  onDeleteDocument,
+  onNavigate,
+  onRenameDocument,
+  onToggle,
+  canCollapse = true,
+}) => {
   const [editingId, setEditingId] = useState(null);
   const [tempTitle, setTempTitle] = useState("");
 
@@ -43,11 +52,13 @@ const DocumentsSidebar = ({ documents, activeDocumentId, onCreateDocument, onDel
           }
         `}
       </style>
-      <div className="outline-sidebar-top">
-        <button className="outline-icon-button" title="Collapse navigation" onClick={onToggle}>
-          <ChevronLeft size={18} />
-        </button>
-      </div>
+      {canCollapse ? (
+        <div className="outline-sidebar-top">
+          <button className="outline-icon-button" title="Collapse navigation" onClick={onToggle}>
+            <ChevronLeft size={18} />
+          </button>
+        </div>
+      ) : null}
 
       <div className="outline-sidebar-body">
         <div className="outline-sidebar-header">
