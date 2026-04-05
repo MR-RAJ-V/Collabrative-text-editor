@@ -4,8 +4,6 @@ import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
 import { TextColor } from './Editor/TextColor';
@@ -165,13 +163,14 @@ const VersionPreview = ({
     editable: false,
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ history: false }),
-      Link.configure({
-        autolink: true,
-        openOnClick: false,
-        defaultProtocol: 'https',
+      StarterKit.configure({
+        undoRedo: false,
+        link: {
+          autolink: true,
+          openOnClick: false,
+          defaultProtocol: 'https',
+        },
       }),
-      Underline,
       TextStyle,
       FontFamily,
       FontSize,

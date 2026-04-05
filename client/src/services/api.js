@@ -60,6 +60,13 @@ export const updateComment = async (id, commentId, payload) => {
   return response.data;
 };
 
+export const deleteComment = async (id, commentId) => {
+  const response = await api.put(`/documents/${id}/comments/${commentId}`, {
+    action: 'delete',
+  });
+  return response.data;
+};
+
 export const addSuggestion = async (id, payload) => {
   const response = await api.post(`/documents/${id}/suggestions`, payload);
   return response.data;

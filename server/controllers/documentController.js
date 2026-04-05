@@ -199,6 +199,18 @@ const updateComment = async (req, res) => {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
+    if (action === 'delete') {
+      const canDeleteComment = canManageFromAccess(access) || comment.user === req.user.name;
+      if (!canDeleteComment) {
+        return res.status(403).json({ message: 'You do not have permission to delete this comment' });
+      }
+
+      comment.deleteOne();
+      document.lastUpdated = new Date();
+      await document.save();
+      return res.json({ deleted: true, commentId: req.params.commentId });
+    }
+
     if (action === 'reply') {
       if (!reply?.message) {
         return res.status(400).json({ message: 'Reply payload is required' });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import EditorComponent from './components/Editor/Editor';
 import TextToolbar from './components/Editor/TextToolbar';
 import Presence from './components/Presence';
@@ -16,6 +16,7 @@ import Login from './components/Login';
 import {
   addComment,
   createDocument,
+  deleteComment as deleteCommentApi,
   getDocument,
   listDocuments,
   shareDocument,
@@ -172,13 +173,6 @@ const sanitizeFilename = (value) => (value || 'untitled-document')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'untitled-document';
-
-const formatVersionBannerDate = (value) => new Date(value).toLocaleString([], {
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
 
 const formatSavedAtTime = (value) => new Date(value).toLocaleTimeString([], {
   hour: 'numeric',
@@ -534,6 +528,11 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const [dialogState, setDialogState] = useState(null);
   const [restorePendingVersionId, setRestorePendingVersionId] = useState(null);
   const [latestVersionMeta, setLatestVersionMeta] = useState(null);
+  const [activeCommentTarget, setActiveCommentTarget] = useState({
+    commentId: null,
+    requestKey: 0,
+  });
+  const [missingCommentTargetId, setMissingCommentTargetId] = useState('');
   const [versionView, setVersionView] = useState({
     mode: 'edit',
     selectedVersionId: null,
@@ -559,6 +558,7 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const documentTextRef = useRef('');
   const isDirtyRef = useRef(false);
   const isConnectedRef = useRef(false);
+  const permissionsRef = useRef(null);
   const actor = currentUser || guestUser;
   const currentUserId = actor.uid || actor.userId;
   const currentUserName = actor.name || actor.username || 'Guest';
@@ -669,6 +669,10 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   useEffect(() => {
     isConnectedRef.current = isConnected;
   }, [isConnected]);
+
+  useEffect(() => {
+    permissionsRef.current = permissions;
+  }, [permissions]);
 
   const clearAutoSaveTimer = useCallback(() => {
     if (autoSaveTimeout.current) {
@@ -799,6 +803,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     trackedSaveChangeCounterRef.current = 0;
     saveInFlightRef.current = false;
     setIsDirty(false);
+    setActiveCommentTarget({ commentId: null, requestKey: 0 });
+    setMissingCommentTargetId('');
   }, [clearAutoSaveTimer, clearTypingTimeouts, routeDocumentId]);
 
   useEffect(() => {
@@ -1199,14 +1205,33 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   }, []);
 
   const handleExitVersionPreview = useCallback(() => {
-    setVersionView({
-      mode: 'edit',
-      selectedVersionId: null,
-      selectedVersion: null,
-      previewLoading: false,
+    setVersionView((current) => {
+      if (
+        current.mode === 'edit'
+        && !current.selectedVersionId
+        && !current.selectedVersion
+        && !current.previewLoading
+      ) {
+        return current;
+      }
+
+      return {
+        mode: 'edit',
+        selectedVersionId: null,
+        selectedVersion: null,
+        previewLoading: false,
+      };
     });
     setRestorePendingVersionId(null);
   }, []);
+
+  const handleEditorPreviewExit = useCallback(() => {
+    if (versionView.mode !== 'preview') {
+      return;
+    }
+
+    handleExitVersionPreview();
+  }, [handleExitVersionPreview, versionView.mode]);
 
   const handleVersionsLoaded = useCallback((versions) => {
     const [latestVersion = null] = Array.isArray(versions) ? versions : [];
@@ -1285,8 +1310,61 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
   const handleResolveToggle = async (commentId, resolved) => {
     const updated = await updateComment(documentId, commentId, { resolved });
     setComments((value) => value.map((item) => (item._id === updated._id ? updated : item)));
+    if (resolved) {
+      setMissingCommentTargetId((current) => (current === commentId ? '' : current));
+      setActiveCommentTarget((current) => (
+        current.commentId === commentId
+          ? { commentId: null, requestKey: current.requestKey + 1 }
+          : current
+      ));
+    }
     socket.emit('comment-updated', updated);
   };
+
+  const handleSelectComment = useCallback((commentId) => {
+    if (!commentId) {
+      return;
+    }
+
+    setMissingCommentTargetId('');
+    setActiveCommentTarget((current) => ({
+      commentId,
+      requestKey: current.requestKey + 1,
+    }));
+  }, []);
+
+  const handleCommentTargetResolved = useCallback(({ commentId, found }) => {
+    if (!commentId) {
+      return;
+    }
+
+    setMissingCommentTargetId((current) => {
+      if (found) {
+        return current === commentId ? '' : current;
+      }
+
+      return commentId;
+    });
+  }, []);
+
+  const handleDeleteComment = useCallback(async (commentId) => {
+    if (!commentId) {
+      return;
+    }
+
+    const response = await deleteCommentApi(documentId, commentId);
+    if (!response?.deleted) {
+      throw new Error('Comment deletion is not available until the API is updated.');
+    }
+
+    setComments((value) => value.filter((comment) => comment._id !== commentId));
+    setMissingCommentTargetId((current) => (current === commentId ? '' : current));
+    setActiveCommentTarget((current) => (
+      current.commentId === commentId
+        ? { commentId: null, requestKey: current.requestKey + 1 }
+        : current
+    ));
+  }, [documentId]);
 
   const handleDownloadText = useCallback(() => {
     const blob = new Blob([documentText || ''], { type: 'text/plain;charset=utf-8' });
@@ -1412,17 +1490,45 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
     });
   };
 
-  const handleUpdateLinkSettings = async (payload) => {
-    await shareDocument(documentId, {
+  const handleUpdateLinkSettings = useCallback(async (payload) => {
+    const nextPermissions = {
+      visibility: payload.visibility === 'public' ? 'public' : 'private',
+      linkRole: payload.linkRole === 'editor' ? 'editor' : 'viewer',
+    };
+    const currentPermissions = permissionsRef.current;
+
+    if (
+      currentPermissions
+      && currentPermissions.visibility === nextPermissions.visibility
+      && currentPermissions.linkRole === nextPermissions.linkRole
+    ) {
+      return currentPermissions;
+    }
+
+    const response = await shareDocument(documentId, {
       visibility: payload.visibility,
       role: payload.linkRole,
     });
-    setPermissions((current) => ({
-      ...(current || {}),
-      visibility: payload.visibility,
-      linkRole: payload.linkRole,
-    }));
-  };
+    startTransition(() => {
+      setPermissions((current) => {
+        if (
+          current
+          && current.visibility === nextPermissions.visibility
+          && current.linkRole === nextPermissions.linkRole
+        ) {
+          return current;
+        }
+
+        return {
+          ...(current || {}),
+          visibility: nextPermissions.visibility,
+          linkRole: nextPermissions.linkRole,
+        };
+      });
+    });
+
+    return response;
+  }, [documentId]);
 
   const closeDialog = useCallback(() => {
     setDialogState(null);
@@ -1820,6 +1926,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           onSelectVersion={handleSelectVersion}
           onBackToCurrent={handleExitVersionPreview}
           onVersionsLoaded={handleVersionsLoaded}
+          onRestoreVersion={handleRestoreVersion}
+          restorePendingVersionId={restorePendingVersionId}
           onClose={closeActivePanel}
         />
       ) : null}
@@ -1838,9 +1946,15 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           panelRef={panelRef}
           comments={comments}
           selection={selection}
+          activeCommentId={activeCommentTarget.commentId}
+          missingCommentTargetId={missingCommentTargetId}
+          currentUserName={currentUserName}
+          canManageComments={canManage}
           onAddComment={auth.isAuthenticated ? handleAddComment : null}
           onReply={auth.isAuthenticated ? handleReply : null}
           onResolveToggle={auth.isAuthenticated ? handleResolveToggle : null}
+          onSelectComment={handleSelectComment}
+          onDeleteComment={auth.isAuthenticated ? handleDeleteComment : null}
           onClose={closeActivePanel}
         />
       ) : null}
@@ -1929,37 +2043,6 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           </div>
         ) : null}
 
-        {isPreviewMode ? (
-          <div className="version-preview-banner">
-            <div>
-              <span className="version-preview-banner-kicker">Past version</span>
-              <strong>
-                Viewing version history snapshot
-                {versionView.selectedVersion?.name ? `: ${versionView.selectedVersion.name}` : ''}
-              </strong>
-              <p>
-                {versionView.previewLoading
-                  ? 'Loading selected version...'
-                  : versionView.selectedVersion
-                    ? `Viewing version from ${formatVersionBannerDate(versionView.selectedVersion.createdAt)} by ${versionView.selectedVersion.createdBy?.name || 'System'}`
-                    : 'Viewing a historical version.'}
-              </p>
-            </div>
-            <div className="top-button-row">
-              <button
-                className="primary-button"
-                disabled={!canEdit || !versionView.selectedVersion || restorePendingVersionId === versionView.selectedVersion.versionId}
-                onClick={() => handleRestoreVersion(versionView.selectedVersion.versionId)}
-              >
-                {restorePendingVersionId === versionView.selectedVersion?.versionId ? 'Restoring...' : 'Restore this version'}
-              </button>
-              <button className="secondary-chip" onClick={handleExitVersionPreview}>
-                Back to current
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <EditorComponent
           key={editorInstanceKey}
           currentUser={actor}
@@ -1967,6 +2050,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           canEdit={editorCanEdit}
           searchQuery={searchQuery}
           comments={comments}
+          activeCommentId={activeCommentTarget.commentId}
+          activeCommentRequestKey={activeCommentTarget.requestKey}
           zoomLevel={zoomLevel}
           mode={versionView.mode}
           previewVersion={versionView.selectedVersion}
@@ -1979,7 +2064,8 @@ const DocumentRoute = ({ auth, currentUser, pathname, routeDocumentId, theme, to
           onSelectionChange={setSelection}
           onEditorReady={handleEditorReady}
           onOpenSearch={() => togglePanel('search')}
-          onPreviewExit={handleExitVersionPreview}
+          onCommentTargetResolved={handleCommentTargetResolved}
+          onPreviewExit={handleEditorPreviewExit}
         />
 
         {(eventsFeed.length || heatmap.length) ? (

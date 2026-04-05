@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock, Save, Tag } from 'lucide-react';
+import { Clock, RotateCcw, Save, Tag } from 'lucide-react';
 import { socket } from '../services/socket';
 import { createVersion, listVersions } from '../services/versionService';
 import { formatDiffSummary, getDiffStats } from '../utils/versionUtils';
@@ -65,8 +65,9 @@ const HistorySidebar = ({
   mode,
   currentText,
   onSelectVersion,
-  onBackToCurrent,
   onVersionsLoaded,
+  onRestoreVersion,
+  restorePendingVersionId,
 }) => {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -177,22 +178,6 @@ const HistorySidebar = ({
               </button>
             </div>
 
-            {mode === 'preview' ? (
-              <div className="panel-card history-mode-card">
-                <p className="panel-label">Viewing in editor</p>
-                <p className="panel-subtle">
-                  {previewLoading
-                    ? 'Loading selected version...'
-                    : selectedVersion
-                      ? `${selectedVersion.createdBy?.name || 'System'} · ${new Date(selectedVersion.createdAt).toLocaleString()}`
-                      : 'Previewing a historical version.'}
-                </p>
-                <button className="secondary-chip history-mode-button" onClick={onBackToCurrent}>
-                  Back to current
-                </button>
-              </div>
-            ) : null}
-
             <div className="version-list-shell version-list-shell-sidebar">
               {loading ? (
                 <p className="history-msg">Loading versions...</p>
@@ -205,45 +190,74 @@ const HistorySidebar = ({
                     <ul className="history-list">
                       {items.map((version) => {
                         const isActive = version.versionId === selectedVersionId && mode === 'preview';
+                        const showRestoreButton = isActive
+                          && selectedVersion?.versionId === version.versionId
+                          && Boolean(onRestoreVersion);
+                        const isRestorePending = restorePendingVersionId === version.versionId;
 
                         return (
                           <li key={version.versionId}>
-                            <button
-                              type="button"
-                              className={`history-item version-list-item ${isActive ? 'version-list-item-active' : ''}`}
-                              onClick={() => onSelectVersion(version.versionId)}
-                            >
-                              <div className="history-meta">
-                                <div className="version-author-row">
-                                  <span className="version-author-name">{version.createdBy?.name || 'System'}</span>
-                                  <span className="version-version-heading">{formatVersionHeading(version)}</span>
+                            <div className={`history-item version-list-item ${isActive ? 'version-list-item-active' : ''}`.trim()}>
+                              <button
+                                type="button"
+                                className="version-item-select"
+                                onClick={() => onSelectVersion(version.versionId)}
+                                aria-pressed={isActive}
+                              >
+                                <div className="history-meta">
+                                  <div className="version-author-row">
+                                    <span className="version-author-name">{version.createdBy?.name || 'System'}</span>
+                                    <span className="version-version-heading">{formatVersionHeading(version)}</span>
+                                  </div>
+                                  <small className="version-summary-copy">{version.summary || 'Snapshot saved'}</small>
+                                  <small className={`version-diff-summary ${!version.diffStats.added && !version.diffStats.removed ? 'version-diff-summary-empty' : ''}`}>
+                                    {version.diffSummary}
+                                  </small>
                                 </div>
-                                <small className="version-summary-copy">{version.summary || 'Snapshot saved'}</small>
-                                <small className={`version-diff-summary ${!version.diffStats.added && !version.diffStats.removed ? 'version-diff-summary-empty' : ''}`}>
-                                  {version.diffSummary}
-                                </small>
-                              </div>
-                              <div className="version-list-tags">
-                                <span className="version-tag">
-                                  <Clock size={12} />
-                                  {new Date(version.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                                </span>
-                                {version.name ? (
-                                  <span className="version-tag version-tag-accent">
-                                    <Tag size={12} />
-                                    Named
-                                  </span>
-                                ) : version.isAutoSave === false ? (
+                                <div className="version-list-tags">
                                   <span className="version-tag">
-                                    Manual
+                                    <Clock size={12} />
+                                    {new Date(version.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                                   </span>
-                                ) : (
-                                  <span className="version-tag">
-                                    Auto
+                                  {version.name ? (
+                                    <span className="version-tag version-tag-accent">
+                                      <Tag size={12} />
+                                      Named
+                                    </span>
+                                  ) : version.isAutoSave === false ? (
+                                    <span className="version-tag">
+                                      Manual
+                                    </span>
+                                  ) : (
+                                    <span className="version-tag">
+                                      Auto
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+
+                              {showRestoreButton ? (
+                                <div className="version-item-footer">
+                                  <span className="version-item-hint">
+                                    {previewLoading
+                                      ? 'Loading preview...'
+                                      : 'Click in the editor to return to the current document.'}
                                   </span>
-                                )}
-                              </div>
-                            </button>
+                                  <button
+                                    type="button"
+                                    className="panel-primary version-restore-button"
+                                    disabled={!canEdit || isRestorePending}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onRestoreVersion(version.versionId);
+                                    }}
+                                  >
+                                    <RotateCcw size={14} />
+                                    {isRestorePending ? 'Restoring...' : 'Restore'}
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
                           </li>
                         );
                       })}

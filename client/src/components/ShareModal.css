@@ -12,6 +12,44 @@
   overflow: hidden;
 }
 
+.share-control-label {
+  margin-top: 6px;
+}
+
+.share-control-wrap {
+  position: relative;
+}
+
+.share-control-input {
+  padding-right: 108px;
+}
+
+.share-control-input-pending {
+  border-color: color-mix(in srgb, var(--accent-color) 38%, var(--border-color));
+}
+
+.share-control-status {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-text);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.share-inline-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--accent-color) 20%, transparent);
+  border-top-color: var(--accent-color);
+  animation: spin 0.7s linear infinite;
+}
+
 .share-link-row {
   display: flex;
   gap: 10px;
@@ -31,4 +69,29 @@
 
 .share-feedback-success {
   color: #15803d;
+}
+
+.share-toast {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  max-width: calc(100% - 36px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.94);
+  color: white;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.share-toast-success {
+  background: rgba(21, 128, 61, 0.94);
+}
+
+@media (max-width: 640px) {
+  .share-control-input {
+    padding-right: 102px;
+  }
 }

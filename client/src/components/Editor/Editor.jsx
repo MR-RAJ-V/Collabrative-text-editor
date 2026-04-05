@@ -4,8 +4,6 @@ import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -63,10 +61,44 @@ const buildTextDecorations = (doc, query) => {
   return decorations;
 };
 
-const createCommentDecorationSet = (doc, comments) => {
-  const decorations = (comments || [])
-    .filter((comment) => !comment.resolved && comment.textRange?.end > comment.textRange?.start)
-    .map((comment) => Decoration.inline(comment.textRange.start, comment.textRange.end, { class: 'comment-highlight' }));
+const resolveCommentRange = (comment, docSize) => {
+  const start = comment?.textRange?.start;
+  const end = comment?.textRange?.end;
+
+  if (
+    typeof start !== 'number'
+    || typeof end !== 'number'
+    || start < 1
+    || end <= start
+    || end > docSize
+  ) {
+    return null;
+  }
+
+  return { start, end };
+};
+
+const createCommentDecorationSet = (doc, comments, activeCommentId) => {
+  const decorations = (comments || []).flatMap((comment) => {
+    const range = resolveCommentRange(comment, doc.content.size);
+    if (!range) {
+      return [];
+    }
+
+    if (comment.resolved) {
+      return [];
+    }
+
+    if (comment._id === activeCommentId) {
+      return [
+        Decoration.inline(range.start, range.end, { class: 'comment-highlight comment-highlight-active' }),
+      ];
+    }
+
+    return [
+      Decoration.inline(range.start, range.end, { class: 'comment-highlight' }),
+    ];
+  });
 
   return DecorationSet.create(doc, decorations);
 };
@@ -110,6 +142,8 @@ const EditorComponent = ({
   canEdit,
   searchQuery,
   comments,
+  activeCommentId,
+  activeCommentRequestKey,
   zoomLevel,
   mode = 'edit',
   previewVersion = null,
@@ -122,6 +156,7 @@ const EditorComponent = ({
   onSelectionChange,
   onEditorReady,
   onOpenSearch,
+  onCommentTargetResolved,
   onPreviewExit,
 }) => {
   const [pageCount, setPageCount] = useState(1);
@@ -164,13 +199,13 @@ const EditorComponent = ({
         new Plugin({
           props: {
             decorations(state) {
-              return createCommentDecorationSet(state.doc, comments);
+              return createCommentDecorationSet(state.doc, comments, activeCommentId);
             },
           },
         }),
       ];
     },
-  }), [comments]);
+  }), [activeCommentId, comments]);
 
   const searchExtension = useMemo(() => Extension.create({
     name: 'searchHighlights',
@@ -273,14 +308,13 @@ const EditorComponent = ({
     editable: canEdit,
     extensions: [
       StarterKit.configure({
-        history: false,
+        undoRedo: false,
+        link: {
+          autolink: true,
+          openOnClick: false,
+          defaultProtocol: 'https',
+        },
       }),
-      Link.configure({
-        autolink: true,
-        openOnClick: false,
-        defaultProtocol: 'https',
-      }),
-      Underline,
       TextStyle,
       FontFamily,
       FontSize,
@@ -302,11 +336,6 @@ const EditorComponent = ({
         to,
         text: instance.state.doc.textBetween(from, to, ' '),
       });
-    },
-    onCreate: ({ editor: instance }) => {
-      onContentChange?.(instance.getText());
-      comparableTextChangeRef.current?.(extractComparableTextFromDoc(instance.state.doc));
-      onOutlineChange?.(extractOutline(instance));
     },
     onUpdate: ({ editor: instance }) => {
       if (modeRef.current === 'edit') {
@@ -338,6 +367,22 @@ const EditorComponent = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const { from, to } = editor.state.selection;
+    onSelectionChange({
+      from,
+      to,
+      text: editor.state.doc.textBetween(from, to, ' '),
+    });
+    onContentChange?.(editor.getText());
+    comparableTextChangeRef.current?.(extractComparableTextFromDoc(editor.state.doc));
+    onOutlineChange?.(extractOutline(editor));
+  }, [editor, onContentChange, onOutlineChange, onSelectionChange]);
 
   const recalculatePageCount = useCallback(() => {
     if (!editor?.view?.dom) {
@@ -421,6 +466,53 @@ const EditorComponent = ({
     };
   }, [editor, schedulePagination, zoomLevel]);
 
+  useEffect(() => {
+    if (!editor || !activeCommentId || mode !== 'edit') {
+      return;
+    }
+
+    const activeComment = (comments || []).find((comment) => comment._id === activeCommentId);
+    if (!activeComment) {
+      onCommentTargetResolved?.({ commentId: activeCommentId, found: false });
+      return;
+    }
+
+    const range = resolveCommentRange(activeComment, editor.state.doc.content.size);
+    if (!range) {
+      onCommentTargetResolved?.({ commentId: activeCommentId, found: false });
+      return;
+    }
+
+    let targetNode = null;
+
+    try {
+      targetNode = editor.view.domAtPos(range.start).node;
+    } catch {
+      onCommentTargetResolved?.({ commentId: activeCommentId, found: false });
+      return;
+    }
+
+    const targetElement = targetNode?.nodeType === Node.TEXT_NODE
+      ? targetNode.parentElement
+      : targetNode instanceof Element
+        ? targetNode
+        : null;
+
+    if (!targetElement) {
+      onCommentTargetResolved?.({ commentId: activeCommentId, found: false });
+      return;
+    }
+
+    onCommentTargetResolved?.({ commentId: activeCommentId, found: true });
+    window.requestAnimationFrame(() => {
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    });
+  }, [activeCommentId, activeCommentRequestKey, comments, editor, mode, onCommentTargetResolved]);
+
   const pageTrackHeight = Math.max(
     PAGE_HEIGHT,
     (pageCount * PAGE_HEIGHT) + (Math.max(pageCount - 1, 0) * PAGE_GAP)
@@ -444,7 +536,7 @@ const EditorComponent = ({
             {mode === 'preview' && previewVersion ? (
               <div
                 className="editor-preview-layer"
-                onPointerDown={onPreviewExit}
+                onClick={onPreviewExit}
                 role="button"
                 tabIndex={-1}
                 aria-label="Exit version preview"

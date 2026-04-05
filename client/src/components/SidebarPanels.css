@@ -118,9 +118,66 @@
 .comment-title-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 10px;
+}
+
+.comment-title-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.comment-thread-card {
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.comment-thread-card:hover {
+  border-color: color-mix(in srgb, var(--accent-color) 24%, var(--border-color));
+}
+
+.comment-thread-card-active {
+  border-color: color-mix(in srgb, var(--accent-color) 40%, var(--border-color));
+  box-shadow: 0 12px 28px rgba(26, 115, 232, 0.08);
+}
+
+.comment-delete-button {
+  border: none;
+  background: transparent;
+  color: var(--muted-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, color 0.16s ease;
+}
+
+.comment-thread-card:hover .comment-delete-button,
+.comment-thread-card-active .comment-delete-button,
+.comment-delete-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.comment-delete-button:hover,
+.comment-delete-button:focus-visible {
+  color: #b91c1c;
+}
+
+.comment-delete-button:disabled {
+  opacity: 1;
+  color: var(--muted-text);
+  cursor: wait;
+  pointer-events: none;
 }
 
 .pill {
@@ -147,6 +204,13 @@
   background: rgba(245, 158, 11, 0.12);
   border-radius: 10px;
   color: var(--text-color);
+  font-size: 13px;
+}
+
+.comment-missing-text,
+.comment-action-error {
+  margin: 0 0 10px;
+  color: #b91c1c;
   font-size: 13px;
 }
 
